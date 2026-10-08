@@ -1,4 +1,4 @@
-import { FileSpreadsheet, Upload } from 'lucide-react';
+import { FileSpreadsheet, RefreshCw, Upload } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { TABLE_EXTENSIONS } from '@/core/tables/formats';
 import { extName, type FsEntry } from '@/core/storage/types';
@@ -14,6 +14,8 @@ export function FilePicker({ onOpen }: { onOpen: (path: string) => void }) {
   const rev = useWorkspaceRevision();
   const [files, setFiles] = useState<FsEntry[] | null>(null);
   const [sessions, setSessions] = useState<Set<string>>(new Set());
+  // Браузер не сообщает о файлах, добавленных в папку через Проводник, — список можно перечитать вручную.
+  const [manual, setManual] = useState(0);
 
   useEffect(() => {
     if (!workspace) return;
@@ -28,7 +30,7 @@ export function FilePicker({ onOpen }: { onOpen: (path: string) => void }) {
     return () => {
       alive = false;
     };
-  }, [workspace, rev]);
+  }, [workspace, rev, manual]);
 
   const upload = async () => {
     if (!workspace) return;
@@ -49,6 +51,9 @@ export function FilePicker({ onOpen }: { onOpen: (path: string) => void }) {
             Таблицы из рабочей папки (Excel или CSV). Одна строка — один человек, столбцы — его данные.
           </p>
         </div>
+        <button className="btn" onClick={() => setManual((n) => n + 1)} aria-label="Обновить список" data-tip="Обновить список">
+          <RefreshCw size={16} />
+        </button>
         <button className="btn btn--primary" onClick={upload}>
           <Upload size={16} /> Добавить таблицу
         </button>
