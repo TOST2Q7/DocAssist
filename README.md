@@ -8,13 +8,22 @@
 - Светлая и тёмная тема, адаптивная вёрстка (ПК, Android, iPhone).
 - Устанавливается как приложение (PWA), обновления проверяются по GitHub.
 
+## Скачать
+
+Готовые сборки — на странице [Releases](https://github.com/TOST2Q7/DocAssist/releases):
+
+- **DocAssist-x.y.z.html** — всё приложение в одном файле: скачать и открыть двойным кликом в Chrome, Edge или
+  Яндекс Браузере. Без установки и без интернета.
+- **DocAssist-web-x.y.z.zip** — веб-версия для размещения на сервере (в любой папке), с офлайн-режимом и установкой как приложение.
+
 ## Быстрый старт
 
 ```bash
 npm install
 npm run dev        # разработка: http://localhost:5173
 npm test           # тесты (vitest)
-npm run build      # сборка в dist/
+npm run build      # сборка сайта в dist/
+npm run build:single  # всё приложение в одном HTML: dist-single/index.html
 npm run preview    # просмотр собранной версии
 ```
 
@@ -143,5 +152,13 @@ src/
 Один раз нужно включить: **Settings → Pages → Source: GitHub Actions**, а в **Settings → Environments → github-pages**
 разрешить ветку `tests`.
 
-После первого открытия сайт работает офлайн. Приложение раз в сутки сверяет свою версию с `package.json`
-в ветке `main` и предлагает обновиться.
+После первого открытия сайт работает офлайн. Приложение раз в сутки сверяет свою версию с последним релизом на GitHub
+(если релизов нет — с `package.json` в ветке `main`) и предлагает обновиться.
+
+### Как выпустить релиз
+
+1. Поднять `version` в `package.json`.
+2. Написать заметки в `docs/releases/vX.Y.Z.md`.
+3. Поставить тег и отправить его: `git tag vX.Y.Z && git push origin vX.Y.Z`.
+
+Workflow `.github/workflows/release.yml` прогонит тесты, соберёт версию-файл и веб-архив и опубликует релиз.

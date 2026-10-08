@@ -1,6 +1,6 @@
 import { RefreshCw } from 'lucide-react';
 import { useState } from 'react';
-import { APP_VERSION, BUILD_DATE, GITHUB_URL } from '@/core/config';
+import { APP_VERSION, BUILD_DATE, GITHUB_URL, IS_SINGLE_FILE, RELEASES_URL } from '@/core/config';
 import { cachedUpdateInfo, checkForUpdate, type UpdateInfo } from '@/core/update/checkUpdate';
 import { formatDateTime } from '@/core/util/format';
 import { isFsAccessSupported } from '@/core/storage/fsAccess';
@@ -50,9 +50,19 @@ export function AboutPage() {
           {info && (
             <Alert kind={info.hasUpdate ? 'warning' : 'success'}>
               {info.hasUpdate ? (
-                <>
-                  Доступна версия <strong>{info.latest}</strong>. Обновите страницу (или нажмите «Обновить» в появившейся полосе сверху).
-                </>
+                IS_SINGLE_FILE ? (
+                  <>
+                    Доступна версия <strong>{info.latest}</strong>.{' '}
+                    <a href={info.url} target="_blank" rel="noreferrer">
+                      Скачайте новый файл
+                    </a>{' '}
+                    и открывайте его вместо этого — данные сохранятся.
+                  </>
+                ) : (
+                  <>
+                    Доступна версия <strong>{info.latest}</strong>. Обновите страницу (или нажмите «Обновить» в появившейся полосе сверху).
+                  </>
+                )
               ) : (
                 <>У вас последняя версия ({info.latest}). Проверено {formatDateTime(info.checkedAt)}.</>
               )}
@@ -99,11 +109,26 @@ export function AboutPage() {
 
         <section className="stack">
           <h2>Офлайн и установка</h2>
-          <p className="muted" style={{ margin: 0 }}>
-            После первого открытия приложение сохраняется в браузере и работает без интернета. Его можно установить как
-            программу: в Chrome/Edge — значок «Установить» в адресной строке; на Android — «Добавить на главный экран»; на
-            iPhone — «Поделиться» → «На экран Домой».
-          </p>
+          {IS_SINGLE_FILE ? (
+            <p className="muted" style={{ margin: 0 }}>
+              Вы используете версию-файл: всё приложение лежит в одном HTML-файле на вашем компьютере и работает без
+              интернета. Новые версии публикуются на{' '}
+              <a href={RELEASES_URL} target="_blank" rel="noreferrer">
+                странице релизов
+              </a>
+              . Данные хранятся в рабочей папке или в браузере, поэтому при переходе на новый файл они сохраняются.
+            </p>
+          ) : (
+            <p className="muted" style={{ margin: 0 }}>
+              После первого открытия приложение сохраняется в браузере и работает без интернета. Его можно установить как
+              программу: в Chrome/Edge — значок «Установить» в адресной строке; на Android — «Добавить на главный экран»; на
+              iPhone — «Поделиться» → «На экран Домой». Версия одним файлом для компьютера — на{' '}
+              <a href={RELEASES_URL} target="_blank" rel="noreferrer">
+                странице релизов
+              </a>
+              .
+            </p>
+          )}
         </section>
 
         <section className="stack">

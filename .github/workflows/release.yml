@@ -1,0 +1,56 @@
+name: Релиз
+
+# Релиз выпускается тегом: git tag v0.1.0 && git push origin v0.1.0
+# Версия в теге должна совпадать с версией в package.json.
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm test
+
+      - name: Проверка версии
+        run: |
+          PKG=$(node -p "require('./package.json').version")
+          if [ "v$PKG" != "$GITHUB_REF_NAME" ]; then
+            echo "::error::Тег $GITHUB_REF_NAME не совпадает с версией в package.json ($PKG)"
+            exit 1
+          fi
+
+      - name: Версия-файл (всё приложение в одном HTML)
+        run: npx vite build --mode single
+
+      - name: Веб-версия (относительные пути — работает из любой папки сервера)
+        run: npx vite build --outDir dist-web
+        env:
+          BASE_PATH: ./
+
+      - name: Упаковка
+        run: |
+          V="${GITHUB_REF_NAME#v}"
+          mkdir -p release
+          cp dist-single/index.html "release/DocAssist-$V.html"
+          (cd dist-web && zip -qr "../release/DocAssist-web-$V.zip" .)
+          (cd release && sha256sum * > SHA256SUMS.txt)
+          ls -la release
+
+      - name: Публикация
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          NOTES="docs/releases/$GITHUB_REF_NAME.md"
+          if [ -f "$NOTES" ]; then ARGS=(--notes-file "$NOTES"); else ARGS=(--generate-notes); fi
+          gh release create "$GITHUB_REF_NAME" release/* --title "DocAssist $GITHUB_REF_NAME" "${ARGS[@]}"

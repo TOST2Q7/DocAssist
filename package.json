@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc && vite build",
+    "build:single": "tsc && vite build --mode single",
     "preview": "vite preview",
     "typecheck": "tsc",
     "test": "vitest run"
@@ -25,6 +26,7 @@
     "typescript": "~5.7.0",
     "vite": "^6.4.4",
     "vite-plugin-pwa": "^0.21.2",
+    "vite-plugin-singlefile": "~2.3.0",
     "vitest": "^3.2.7"
   }
 }

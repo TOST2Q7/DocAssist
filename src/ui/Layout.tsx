@@ -1,8 +1,33 @@
-import { RefreshCw } from 'lucide-react';
+import { Download, RefreshCw } from 'lucide-react';
+import { useState } from 'react';
 import { Link, Outlet } from 'react-router-dom';
 import { useRegisterSW } from 'virtual:pwa-register/react';
-import { APP_VERSION } from '@/core/config';
+import { APP_VERSION, IS_SINGLE_FILE } from '@/core/config';
+import { useUpdateCheck } from '@/core/update/checkUpdate';
 import { Header } from './Header';
+
+/** Версия-файл сама не обновляется — предлагаем скачать новую со страницы релизов. */
+function FileUpdateBanner() {
+  const info = useUpdateCheck();
+  const [hidden, setHidden] = useState(false);
+  if (!info?.hasUpdate || hidden) return null;
+  return (
+    <div className="update-banner" role="status">
+      <div className="update-banner__inner">
+        <Download size={16} />
+        <span className="spacer">
+          Вышла версия DocAssist {info.latest} (у вас {APP_VERSION}). Ваши данные сохранятся.
+        </span>
+        <a className="btn btn--sm btn--primary" href={info.url} target="_blank" rel="noreferrer">
+          Скачать
+        </a>
+        <button className="btn btn--sm btn--ghost" onClick={() => setHidden(true)}>
+          Позже
+        </button>
+      </div>
+    </div>
+  );
+}
 
 function UpdateBanner() {
   const {
@@ -30,7 +55,7 @@ export function Layout() {
   return (
     <div className="app-shell">
       <Header />
-      <UpdateBanner />
+      {IS_SINGLE_FILE ? <FileUpdateBanner /> : <UpdateBanner />}
       <main className="main">
         <Outlet />
       </main>
