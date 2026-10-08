@@ -157,8 +157,11 @@ src/
 
 ### Как выпустить релиз
 
-1. Поднять `version` в `package.json`.
-2. Написать заметки в `docs/releases/vX.Y.Z.md`.
-3. Поставить тег и отправить его: `git tag vX.Y.Z && git push origin vX.Y.Z`.
+1. Поднять `version` в `package.json` и написать заметки в `docs/releases/vX.Y.Z.md`.
+2. Выпустить релиз одним из способов:
+   - на сайте GitHub: **Releases → Draft a new release → Choose a tag**: ввести `vX.Y.Z` (создать при публикации),
+     выбрать ветку с кодом в **Target** → **Publish release**;
+   - или из терминала: `git tag vX.Y.Z && git push origin vX.Y.Z`.
 
-Workflow `.github/workflows/release.yml` прогонит тесты, соберёт версию-файл и веб-архив и опубликует релиз.
+Workflow `.github/workflows/release.yml` прогонит тесты, соберёт версию-файл и веб-архив и прикрепит их к релизу
+(заметки возьмёт из `docs/releases`, если описание релиза пустое).

@@ -1,13 +1,22 @@
 name: Релиз
 
-# Релиз выпускается тегом: git tag v0.1.0 && git push origin v0.1.0
-# Версия в теге должна совпадать с версией в package.json.
+# Как выпустить релиз (версия в теге должна совпадать с версией в package.json):
+#  - на сайте GitHub: Releases → Draft a new release → тег v0.1.0 (создать при публикации) → Publish;
+#    файлы приложения соберутся и прикрепятся к релизу автоматически;
+#  - или из терминала: git tag v0.1.0 && git push origin v0.1.0 — релиз создастся сам.
 on:
   push:
     tags: ['v*']
+  release:
+    types: [published]
 
 permissions:
   contents: write
+
+# Тег, созданный при публикации релиза на сайте, может запустить оба события — выполняем их по очереди.
+concurrency:
+  group: release-${{ github.ref_name }}
+  cancel-in-progress: false
 
 jobs:
   release:
@@ -51,6 +60,15 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          NOTES="docs/releases/$GITHUB_REF_NAME.md"
-          if [ -f "$NOTES" ]; then ARGS=(--notes-file "$NOTES"); else ARGS=(--generate-notes); fi
-          gh release create "$GITHUB_REF_NAME" release/* --title "DocAssist $GITHUB_REF_NAME" "${ARGS[@]}"
+          TAG="$GITHUB_REF_NAME"
+          NOTES="docs/releases/$TAG.md"
+          if gh release view "$TAG" > /dev/null 2>&1; then
+            # Релиз уже создан на сайте — прикрепляем файлы и, если описание пустое, добавляем заметки.
+            gh release upload "$TAG" release/* --clobber
+            if [ -f "$NOTES" ] && [ -z "$(gh release view "$TAG" --json body -q .body)" ]; then
+              gh release edit "$TAG" --notes-file "$NOTES"
+            fi
+          else
+            if [ -f "$NOTES" ]; then ARGS=(--notes-file "$NOTES"); else ARGS=(--generate-notes); fi
+            gh release create "$TAG" release/* --title "DocAssist $TAG" "${ARGS[@]}"
+          fi
