@@ -1,0 +1,87 @@
+/*
+ * Дизайн-токены. Фирменные цвета РСО меняются здесь — весь интерфейс подхватит.
+ * Брендбук РСО в открытом доступе не найден: используется синий (как овал логотипа)
+ * и красный акцент (цвета флага РФ). При появлении брендбука заменить --brand*.
+ */
+:root {
+  --font: system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  --font-mono: ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+
+  --radius-s: 6px;
+  --radius: 10px;
+  --radius-l: 14px;
+  --header-h: 56px;
+  --gap: 16px;
+  --tap: 40px;
+
+  --brand: #1d4fa0;
+  --brand-hover: #173f80;
+  --brand-contrast: #ffffff;
+  --brand-soft: #e8eefa;
+  --accent: #d52b1e;
+
+  --bg: #f4f6f9;
+  --surface: #ffffff;
+  --surface-2: #f0f2f6;
+  --surface-3: #e6e9ef;
+  --border: #d9dee6;
+  --border-strong: #b9c1cd;
+  --text: #18202c;
+  --text-muted: #5a6474;
+  --text-faint: #8a93a3;
+  --focus: #2d6ae0;
+  --shadow: 0 1px 2px rgb(16 24 40 / 6%), 0 2px 8px rgb(16 24 40 / 6%);
+  --shadow-l: 0 8px 32px rgb(16 24 40 / 18%);
+
+  --error: #c42b2b;
+  --error-soft: #fde8e8;
+  --warning: #a35f00;
+  --warning-soft: #fff1d6;
+  --info: #1b5fb8;
+  --info-soft: #e5effc;
+  --success: #23803a;
+  --success-soft: #e3f4e7;
+  /* «Слипшиеся» слова — отдельный цвет, чтобы не путать с ошибками. */
+  --glued: #7a3fc0;
+  --glued-soft: #f1e8fc;
+  --diff-del: #fbd5d5;
+  --diff-ins: #cdeed6;
+
+  color-scheme: light;
+}
+
+:root[data-theme='dark'] {
+  --brand: #6f9cf0;
+  --brand-hover: #8db1f5;
+  --brand-contrast: #0b1220;
+  --brand-soft: #1b2a45;
+  --accent: #ff6b5e;
+
+  --bg: #0e1116;
+  --surface: #161a21;
+  --surface-2: #1d222b;
+  --surface-3: #262c37;
+  --border: #2b323e;
+  --border-strong: #3d4655;
+  --text: #e5e9f0;
+  --text-muted: #a0a9b8;
+  --text-faint: #6f7888;
+  --focus: #7aa7ff;
+  --shadow: 0 1px 2px rgb(0 0 0 / 40%);
+  --shadow-l: 0 8px 32px rgb(0 0 0 / 55%);
+
+  --error: #ff7b7b;
+  --error-soft: #3a1d20;
+  --warning: #f2b14c;
+  --warning-soft: #362a14;
+  --info: #79aefc;
+  --info-soft: #182a44;
+  --success: #64c87b;
+  --success-soft: #16301d;
+  --glued: #bb93f5;
+  --glued-soft: #2c2140;
+  --diff-del: #4a2326;
+  --diff-ins: #1d3d26;
+
+  color-scheme: dark;
+}
