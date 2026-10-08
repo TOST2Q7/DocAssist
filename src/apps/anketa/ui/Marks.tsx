@@ -1,28 +1,39 @@
 import type { Issue } from '../model/types';
 import { diffWords } from './diff';
 
-/** Значение с подсвеченными участками (слипшиеся слова, латиница, двойные пробелы). */
+/**
+ * Значение с подсвеченными огрехами: лишнее и неверное — выделено, а там, где чего-то не хватает, —
+ * маркер «▾» с подсказкой.
+ */
 export function MarkedValue({ value, issues }: { value: string; issues: Issue[] }) {
   const spans = issues
     .filter((i) => i.span)
-    .map((i) => ({ start: i.span![0], end: i.span![1], kind: i.category === 'glued' ? 'glued' : i.severity, title: i.message }))
-    .sort((a, b) => a.start - b.start);
+    .map((i) => ({ start: i.span![0], end: i.span![1], kind: i.category === 'glued' ? 'glued' : i.level, title: i.message }))
+    .sort((a, b) => a.start - b.start || a.end - b.end);
   if (!spans.length) return null;
   const parts: React.ReactNode[] = [];
   let pos = 0;
   spans.forEach((s, k) => {
     if (s.start < pos) return;
     if (s.start > pos) parts.push(value.slice(pos, s.start));
+    if (s.start === s.end) {
+      parts.push(
+        <mark key={k} className={`hl hl--gap hl--${s.kind}`} title={s.title} aria-label={s.title}>
+          ▾
+        </mark>,
+      );
+      return;
+    }
     const text = value.slice(s.start, s.end);
     parts.push(
       <mark key={k} className={`hl hl--${s.kind}`} title={s.title}>
-        {/^\s+$/.test(text) ? text.replace(/ /g, '·').replace(/\t/g, '→').replace(/\n/g, '↵') : text}
+        {/\s/.test(text) ? text.replace(/ /g, '·').replace(/\u00a0/g, '⍽').replace(/\t/g, '→').replace(/\n/g, '↵') : text}
       </mark>,
     );
     pos = s.end;
   });
   if (pos < value.length) parts.push(value.slice(pos));
-  return <div className="marked mono-ish">{parts}</div>;
+  return <div className="marked">{parts}</div>;
 }
 
 /** Пословная разница: удалённое зачёркнуто, добавленное выделено. Короткие значения — целиком «было → стало». */

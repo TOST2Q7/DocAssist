@@ -1,4 +1,4 @@
-import { ArrowLeft, Download, Loader2, Wand2 } from 'lucide-react';
+import { ArrowLeft, BookCheck, Download, Loader2, Wand2 } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import { FIELD_BY_ID, PERSON_FIELDS } from '@/core/schema/fields';
 import { baseName } from '@/core/storage/types';
@@ -9,6 +9,7 @@ import { editCount } from '../model/session';
 import { ExportDialog } from './ExportDialog';
 import { FixAllDialog, type Change } from './FixAllDialog';
 import { useCheckContext, useSession, useTable, useTableModel } from './hooks';
+import { collectNewWords, NewWordsDialog } from './NewWordsDialog';
 import { PeopleList } from './PeopleList';
 import { personChanges, PersonView } from './PersonView';
 import type { TableData } from '@/core/tables/tables';
@@ -50,6 +51,7 @@ function Loaded({ path, row, onRow, onSheet, onClose, table, size, lastModified 
   const toast = useToast();
   const [exporting, setExporting] = useState(false);
   const [fixAll, setFixAll] = useState<Change[] | null>(null);
+  const [newWords, setNewWords] = useState(false);
 
   // Запоминаем, с каким файлом связан сеанс.
   useEffect(() => {
@@ -71,7 +73,9 @@ function Loaded({ path, row, onRow, onSheet, onClose, table, size, lastModified 
 
   const unmapped = PERSON_FIELDS.filter((f) => !model.columns.includes(f.id));
   const mappedCount = model.columns.filter(Boolean).length;
-  const totals = model.results.reduce((a, r) => ({ e: a.e + r.counts.error, w: a.w + r.counts.warning, g: a.g + r.counts.glued }), { e: 0, w: 0, g: 0 });
+  const totals = model.results.reduce((a, r) => ({ e: a.e + r.counts.error, c: a.c + r.counts.confirm, g: a.g + r.counts.glued }), { e: 0, c: 0, g: 0 });
+  const ready = model.results.filter((r) => r.ready).length;
+  const words = useMemo(() => collectNewWords(model.results, model.names, table.headers), [model.results, model.names, table.headers]);
   const edits = editCount(s.session);
 
   const allChanges = () => model.results.flatMap((r) => personChanges(r, model.values[r.row], table.rows[r.row], table.headers, model.names[r.row]));
@@ -91,7 +95,7 @@ function Loaded({ path, row, onRow, onSheet, onClose, table, size, lastModified 
         onSelect={(r) => onRow(r === null ? null : Math.max(0, Math.min(model.results.length - 1, r)))}
         onChangeCell={(col, value) => s.setCell(row, col, value, table.rows[row][col] ?? '')}
         onApply={apply}
-        onIgnore={(key) => s.ignore(row, key, true)}
+        onAccept={(col, value) => s.accept(row, col, value)}
         onToggleReviewed={() => s.toggleReviewed(row)}
       />
     );
@@ -106,8 +110,11 @@ function Loaded({ path, row, onRow, onSheet, onClose, table, size, lastModified 
         <div className="spacer">
           <h2 style={{ margin: 0 }}>{fileName}</h2>
           <div className="small muted">
-            {model.results.length} {plural(model.results.length, ['человек', 'человека', 'человек'])} · ошибок {totals.e} · замечаний {totals.w}
-            {totals.g ? ` · слипшихся ${totals.g}` : ''} · правок {edits} · проверено {s.session.reviewed.length}
+            Готово {ready} из {model.results.length} · ошибок {totals.e}
+            {totals.g ? ` · слипшихся ${totals.g}` : ''} · подтвердить {totals.c} · правок {edits}
+          </div>
+          <div className="progress" role="progressbar" aria-valuemin={0} aria-valuemax={model.results.length} aria-valuenow={ready} aria-label="Готовые анкеты">
+            <div className="progress__bar" style={{ width: `${model.results.length ? (ready / model.results.length) * 100 : 0}%` }} />
           </div>
         </div>
         {table.sheetNames.length > 1 && (
@@ -118,7 +125,10 @@ function Loaded({ path, row, onRow, onSheet, onClose, table, size, lastModified 
           </select>
         )}
         <button className="btn" onClick={() => setFixAll(allChanges())} disabled={s.readOnly}>
-          <Wand2 size={16} /> Исправить у всех
+          <Wand2 size={16} /> Исправить у всех по шаблону
+        </button>
+        <button className="btn btn--confirm" onClick={() => setNewWords(true)} disabled={s.readOnly || !words.length}>
+          <BookCheck size={16} /> Новые слова ({words.length})
         </button>
         <button className="btn btn--primary" onClick={() => setExporting(true)}>
           <Download size={16} /> Новая таблица
@@ -175,6 +185,7 @@ function Loaded({ path, row, onRow, onSheet, onClose, table, size, lastModified 
           onClose={() => setExporting(false)}
         />
       )}
+      {newWords && <NewWordsDialog items={words} onClose={() => setNewWords(false)} />}
       {fixAll && (
         <FixAllDialog
           changes={fixAll}

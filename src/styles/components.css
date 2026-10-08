@@ -975,3 +975,47 @@ a.chip:hover {
   color: var(--text-faint);
   cursor: default;
 }
+
+.badge--accepted {
+  background: var(--surface-3);
+  color: var(--text-muted);
+}
+.chip--postal {
+  margin-left: 6px;
+  padding: 0 4px 0 8px;
+  font-variant-numeric: tabular-nums;
+}
+.chip__x {
+  width: 20px;
+  height: 20px;
+}
+.learned {
+  display: flex;
+  flex-direction: column;
+  max-height: 240px;
+  overflow-y: auto;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-s);
+}
+.learned__item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 4px 4px 10px;
+  font-size: 0.9rem;
+}
+.learned__item + .learned__item {
+  border-top: 1px solid var(--border);
+}
+.fieldset {
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 8px 12px 12px;
+  margin: 0;
+}
+.fieldset legend {
+  font-size: 0.86rem;
+  font-weight: 600;
+  color: var(--text-muted);
+  padding: 0 4px;
+}

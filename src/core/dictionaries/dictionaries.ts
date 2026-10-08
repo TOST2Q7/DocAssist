@@ -49,14 +49,21 @@ export interface AddOptions {
   share?: boolean;
 }
 
-export function addDictEntry<V>(ws: Workspace, name: string, value: V, opts: AddOptions): DictEntry<V> {
-  const entry: DictEntry<V> = { id: uid('d_'), value, addedAt: new Date().toISOString(), origin: opts.origin ?? 'user' };
+/**
+ * Добавить значение в справочник. Повторы не добавляются (ни в справочник, ни в «Предложения»).
+ * Возвращает true, если значение новое.
+ */
+export async function addDictEntry<V>(ws: Workspace, name: string, value: V, opts: AddOptions): Promise<boolean> {
   const store = dictionaryStore<V>(ws, name);
-  void store.load().then(() => store.update((d) => ({ ...d, entries: [...d.entries, entry] })));
+  await store.load();
+  const key = JSON.stringify(value);
+  if (store.get().data.entries.some((e) => JSON.stringify(e.value) === key)) return false;
+  const entry: DictEntry<V> = { id: uid('d_'), value, addedAt: new Date().toISOString(), origin: opts.origin ?? 'user' };
+  store.update((d) => ({ ...d, entries: [...d.entries, entry] }));
   if (opts.share !== false) {
     addContribution(ws, { source: opts.source, dictionary: name, label: opts.label, entry: value });
   }
-  return entry;
+  return true;
 }
 
 export function useDictionary<V>(name: string) {
@@ -70,8 +77,8 @@ export function useDictionary<V>(name: string) {
       loaded: !!state?.loaded,
       entries,
       hidden,
-      add(value: V, opts: AddOptions) {
-        if (!workspace) return;
+      add(value: V, opts: AddOptions): Promise<boolean> {
+        if (!workspace) return Promise.resolve(false);
         return addDictEntry(workspace, name, value, opts);
       },
       remove(id: string) {

@@ -1,452 +1,374 @@
-import { fixMixedScript, fixNameCase, fixSpaces, levenshtein, mixedScriptProblems, spaceProblems } from '../text/text';
-import { COUNTRY_NAME, needsDot, normWord, TYPE_BY_ID } from './addrTypes';
-import type { Gazetteer, GeoNode } from './gazetteer';
+import { confirm, err } from '../check/finalize';
+import type { FieldCheck, Issue } from '../check/types';
+import { fixMixedScript, fixNameCase, fixSpaces } from '../text/text';
+import { COUNTRY_NAME, TYPE_BY_ID } from './addrTypes';
+import { nodeKey, type Gazetteer, type GeoNode } from './gazetteer';
 import { applyGlues, findGlues } from './glue';
 import { parseAddress, type Component } from './parse';
-import { REGIONS } from './regions';
 import type { AddressTemplate } from './template';
-import { LEVEL_LABELS, levelRank, type Level } from './types';
+import { LEVEL_LABELS, levelRank, type AddrType, type AddressPart, type Level } from './types';
 
 /*
- * Проверка адреса по шаблону и по дереву населённых пунктов.
- * Возвращает: части адреса (для подсветки), список замечаний и исправленный вариант.
+ * Строгая проверка адреса.
+ *
+ * 1. «Слипшиеся» слова ищутся отдельным этапом (своя категория).
+ * 2. Адрес разбирается на части, каждая часть сверяется с деревом «регион → район → населённый пункт → улица».
+ * 3. Строятся две формы:
+ *      local     — части в том порядке, как написаны, но каждая записана правильно;
+ *      canonical — адрес строго по шаблону (порядок, обязательные и запрещённые части, данные справочника).
+ *    Отличия исходного текста от local объясняются автоматически (регистр, точки, запятые, лишние слова),
+ *    а отличия local от canonical — отдельными замечаниями (порядок, недостающие части, конфликт с деревом).
+ * 4. Всё, чего нет в справочнике (село, улица, индекс), требует подтверждения человеком.
+ * Итог: адрес верен, только если он в точности равен canonical и всё подтверждено.
  */
 
-export type Severity = 'error' | 'warning' | 'info';
-export type IssueCategory = 'glued' | 'format' | 'order' | 'tree' | 'missing' | 'dictionary' | 'typo';
-
-export interface AddToDictionaryAction {
-  kind: 'add-to-dictionary';
-  name: string;
-  /** Предполагаемый тип (id из addrTypes). */
-  type: string | null;
-  /** Путь родителя в дереве (если известен). */
-  parentPath: string[] | null;
-  parentLabel: string | null;
-}
-
-export interface AddressIssue {
-  code: string;
-  severity: Severity;
-  category: IssueCategory;
-  message: string;
-  span?: [number, number];
-  /** Полностью исправленное значение поля (если есть точечное исправление). */
-  fix?: string;
-  partIndex?: number;
-  action?: AddToDictionaryAction;
-}
-
-export interface AddressPart {
-  level: Level | null;
-  levelLabel: string;
-  text: string;
-  original: string;
-  known: boolean;
-  node?: GeoNode;
-  chain?: string;
-  status: 'ok' | 'info' | 'warning' | 'error';
-}
-
-export interface AddressCheck {
+export interface AddressCheck extends FieldCheck {
   parts: AddressPart[];
-  issues: AddressIssue[];
-  suggestion: string;
   regionNode: GeoNode | null;
+  localityNode: GeoNode | null;
 }
 
-interface Resolved {
+interface Item {
   comp: Component;
   node: GeoNode | null;
-  candidates: GeoNode[];
+  /** Узел для итоговой формы (при конфликте с деревом — исправленный). */
+  finalNode?: GeoNode | null;
   added?: boolean;
+  status: AddressPart['status'];
 }
 
-const NAMED_LEVELS: Level[] = ['region', 'district', 'city', 'settlement', 'area', 'street'];
+const NAMED: Level[] = ['region', 'district', 'city', 'settlement', 'area'];
+const populated = (l: Level | null) => l === 'city' || l === 'settlement';
 
-function candidatesFor(c: Component, gaz: Gazetteer): GeoNode[] {
-  if (!c.level || !NAMED_LEVELS.includes(c.level) || !c.name) return [];
-  const all = gaz.find(c.name);
-  return all.filter((n) => {
-    if (n.level === c.level) return true;
-    const populated = (l: Level | null) => l === 'city' || l === 'settlement';
-    if (populated(n.level) && populated(c.level)) return true;
-    // «г. Москва» — город федерального значения, это уровень региона.
-    if (n.level === 'region' && n.type === 'g' && c.type?.id === 'g') return true;
-    return false;
-  });
+function levelCompatible(n: GeoNode, c: Component): boolean {
+  if (!c.level) return false;
+  if (n.level === c.level) return true;
+  if (populated(n.level) && populated(c.level)) return true;
+  // «г. Москва» — город федерального значения, это регион.
+  return n.level === 'region' && n.type === 'g' && c.type?.id === 'g';
 }
 
-function nameIsBadCase(name: string): boolean {
-  const letters = name.replace(/[^\p{L}]/gu, '');
-  if (letters.length < 2) return false;
-  return name !== fixNameCase(name);
+/** Найти название в дереве; если целиком не найдено — самое длинное известное начало (остальное — лишнее). */
+function resolveName(gaz: Gazetteer, c: Component, within: GeoNode | null, ok: (n: GeoNode) => boolean) {
+  const words = c.name.split(' ');
+  for (let k = words.length; k >= 1; k--) {
+    const name = words.slice(0, k).join(' ');
+    const found = gaz.findUnder(name, within).filter(ok);
+    if (found.length) return { candidates: found, name, extra: words.slice(k).join(' ') };
+  }
+  return null;
 }
 
-export function renderComponent(c: Component, node: GeoNode | null, t: AddressTemplate, gaz: Gazetteer): string {
+function numberText(c: Component, t: AddressTemplate): string {
+  const joined = c.name.replace(/^(\d+)\s+([\p{L}])$/u, '$1$2');
+  return t.houseLetter === 'upper' ? joined.toUpperCase() : joined.toLowerCase();
+}
+
+function render(item: Item, t: AddressTemplate, gaz: Gazetteer, mode: 'local' | 'final'): string {
+  const c = item.comp;
+  const node = mode === 'final' ? (item.finalNode ?? item.node) : item.node;
   let text: string;
   if (c.level === 'index') text = c.name;
   else if (c.level === 'country') text = COUNTRY_NAME;
-  else if (node && (node.region || node.level === 'region')) text = gaz.label(node, t.regionStyle);
+  else if (node && (node.region || (node.level === 'region' && node.type === 'g'))) text = gaz.label(node, t.regionStyle);
   else {
-    const type = c.type ?? (node ? (TYPE_BY_ID.get(node.type) ?? null) : null);
-    let name = node ? node.name : fixNameCase(c.name);
-    if (type?.numbered) name = c.name.replace(/^(\d+)\s+([\p{L}])$/u, '$1$2');
+    let type: AddrType | null = c.type ?? (node ? (TYPE_BY_ID.get(node.type) ?? null) : null);
+    if (mode === 'final' && node && TYPE_BY_ID.get(node.type)) type = TYPE_BY_ID.get(node.type)!;
+    const name = type?.numbered ? numberText(c, t) : node ? node.name : fixNameCase(c.name);
     if (!type) text = name;
     else {
       const typeText = t.typeStyle === 'short' ? type.short : type.full;
-      text = type.placement === 'before' ? `${typeText} ${name}` : `${name} ${typeText}`;
+      let placement = type.placement;
+      if (mode === 'local' && c.typeMisplaced) placement = placement === 'before' ? 'after' : 'before';
+      text = placement === 'before' ? `${typeText} ${name}` : `${name} ${typeText}`;
     }
   }
-  const part = c.level ? t.parts?.[c.level] : undefined;
-  return `${part?.prefix ?? ''}${text}${part?.suffix ?? ''}`;
+  const a = c.level ? t.affixes?.[c.level] : undefined;
+  return `${a?.prefix ?? ''}${text}${a?.suffix ?? ''}`;
 }
 
 export function checkAddress(raw: string, t: AddressTemplate, gaz: Gazetteer): AddressCheck {
-  const issues: AddressIssue[] = [];
   const value = raw ?? '';
-  if (!value.trim()) {
-    return {
-      parts: [],
-      issues: [{ code: 'empty', severity: 'error', category: 'missing', message: 'Адрес не заполнен' }],
-      suggestion: '',
-      regionNode: null,
-    };
-  }
+  const empty: AddressCheck = { issues: [], parts: [], regionNode: null, localityNode: null };
+  if (!value.trim()) return { ...empty, issues: [err('empty', 'missing', 'Адрес не заполнен')] };
 
-  // 1. Текстовые проблемы (пробелы, латиница в русских словах).
-  for (const p of spaceProblems(value)) issues.push({ code: p.code, severity: 'warning', category: 'format', message: p.message, span: p.span });
-  for (const p of mixedScriptProblems(value)) issues.push({ code: p.code, severity: 'error', category: 'typo', message: p.message, span: p.span });
-
-  // 2. Слипшиеся слова — отдельная категория.
+  const issues: Issue[] = [];
   const glues = findGlues(value, { isKnownName: (w) => gaz.hasName(w) });
-  for (const g of glues) {
-    issues.push({ code: 'glued', severity: 'warning', category: 'glued', message: `${g.reason}: «${g.fixed}»`, span: [g.start, g.end] });
-  }
+  for (const g of glues) issues.push(err('glued', 'glued', `${g.reason} → «${g.fixed}»`, { span: [g.start, g.end] }));
 
-  // 3. Разбор очищенного текста.
   const clean = fixSpaces(applyGlues(fixMixedScript(value), glues));
-  const { components } = parseAddress(clean, gaz);
-  const resolved: Resolved[] = components.map((comp) => ({ comp, node: null, candidates: candidatesFor(comp, gaz) }));
+  const items: Item[] = parseAddress(clean, gaz).components.map((comp) => ({ comp, node: null, status: 'ok' }));
+  const mark = (it: Item, s: AddressPart['status']) => {
+    if (it.status !== 'error') it.status = s;
+  };
 
-  // 4. Сверка с деревом: идём от крупного к мелкому, каждый следующий должен лежать внутри предыдущего.
-  const byLevel = [...resolved].sort((a, b) => levelRank(a.comp.level ?? 'flat') - levelRank(b.comp.level ?? 'flat'));
-  let context: GeoNode | null = null;
-  let contextRes: Resolved | null = null;
-  const conflicts = new Set<Resolved>();
-  for (const r of byLevel) {
-    if (!r.candidates.length) continue;
-    if (!context) {
-      r.node = r.candidates[0];
-      if (r.candidates.length > 1 && new Set(r.candidates.map((c) => gaz.regionOf(c)?.id)).size > 1) {
-        issues.push({
-          code: 'ambiguous',
-          severity: 'info',
-          category: 'tree',
-          message: `«${r.comp.name}» есть в нескольких регионах — укажите регион, чтобы проверка была точной`,
-        });
+  // --- Сверка с деревом: от крупного к мелкому, каждая часть должна лежать внутри предыдущей.
+  const named = items.filter((it) => it.comp.level && NAMED.includes(it.comp.level)).sort((a, b) => levelRank(a.comp.level!) - levelRank(b.comp.level!));
+  let context: Item | null = null;
+  for (const it of named) {
+    const res = resolveName(gaz, it.comp, null, (n) => levelCompatible(n, it.comp));
+    if (!res) continue;
+    if (res.extra) it.comp = { ...it.comp, name: res.name }; // лишние слова уйдут из правильной формы
+    if (it.comp.level !== 'region' && res.candidates.some((n) => n.level === 'region')) it.comp = { ...it.comp, level: 'region' };
+    const ctx = context?.node;
+    if (!ctx) {
+      it.node = res.candidates[0];
+      if (res.candidates.length > 1 && new Set(res.candidates.map((c) => gaz.regionOf(c)?.id)).size > 1 && !items.some((x) => x.comp.level === 'region')) {
+        issues.push(err('ambiguous', 'missing', `«${it.comp.name}» есть в нескольких регионах — укажите регион`));
+        mark(it, 'error');
       }
-      context = r.node;
-      contextRes = r;
+      context = it;
       continue;
     }
-    const ctx: GeoNode = context;
-    const inside = r.candidates.filter((c) => gaz.isAncestor(ctx, c) || c.id === ctx.id);
+    const inside = res.candidates.filter((c) => gaz.isAncestor(ctx, c));
     if (inside.length) {
-      r.node = inside[0];
-      context = r.node;
-      contextRes = r;
+      it.node = inside[0];
+      context = it;
       continue;
     }
     // Конфликт: «Абакан» лежит не в том регионе, что указан.
-    r.node = r.candidates[0];
-    conflicts.add(r);
-    conflicts.add(contextRes!);
-    const actual = gaz.ancestors(r.node).find((a) => a.level === ctx.level) ?? gaz.regionOf(r.node);
-    const conflictWith = contextRes!;
-    const nodeLabel = gaz.label(r.node);
-    const ctxLabel = gaz.label(ctx);
-    let fix: string | undefined;
-    if (actual && r.candidates.length === 1) {
-      conflictWith.node = actual;
-      fix = '__RENDER__';
+    it.node = res.candidates[0];
+    const actual = gaz.ancestors(it.node).find((a) => a.level === ctx.level) ?? null;
+    if (actual && res.candidates.length === 1) context!.finalNode = actual;
+    issues.push(
+      err(
+        'tree-conflict',
+        'consistency',
+        actual
+          ? `«${gaz.label(it.node)}» находится в «${gaz.label(actual)}», а указано «${gaz.label(ctx)}»`
+          : `«${gaz.label(it.node)}» не находится в «${gaz.label(ctx)}»`,
+      ),
+    );
+    mark(it, 'error');
+    mark(context!, 'error');
+    context = it;
+  }
+
+  const finalOf = (it: Item) => it.finalNode ?? it.node;
+  const deepestKnown = [...named].reverse().find((it) => it.node);
+  const deepNode = deepestKnown ? finalOf(deepestKnown) : null;
+  const regionNode = deepNode ? gaz.regionOf(deepNode) : null;
+  const locality = items.filter((it) => populated(it.comp.level)).pop() ?? null;
+  const localityNode = locality ? finalOf(locality) : null;
+
+  // Где должен лежать неизвестный населённый пункт: ближайшая известная часть выше него.
+  const knownParentOf = (it: Item): GeoNode | null => {
+    const above = items.filter((o) => o.node && o.comp.level && levelRank(o.comp.level) < levelRank(it.comp.level ?? 'flat'));
+    above.sort((a, b) => levelRank(b.comp.level!) - levelRank(a.comp.level!));
+    return above[0] ? finalOf(above[0]) : null;
+  };
+
+  // --- Населённый пункт по справочнику.
+  if (locality && !locality.node && t.verify.locality) {
+    const parent = knownParentOf(locality);
+    issues.push(
+      confirm('locality-unknown', 'dictionary', `«${render(locality, t, gaz, 'final')}» нет в справочнике${parent ? ` (${gaz.chain(parent)})` : ''} — проверьте и подтвердите`, {
+        action: { kind: 'add-place', name: fixNameCase(locality.comp.name), type: locality.comp.type?.id ?? null, parentPath: parent ? gaz.pathOf(parent) : null, parentLabel: parent ? gaz.chain(parent) : null },
+      }),
+    );
+    mark(locality, 'confirm');
+  }
+  // Путь населённого пункта — известный или будущий (если его подтвердят вместе с улицей).
+  const localityPath = (() => {
+    if (localityNode) return gaz.pathOf(localityNode);
+    if (!locality?.comp.type) return null;
+    const parent = knownParentOf(locality);
+    return parent ? [...gaz.pathOf(parent), nodeKey(locality.comp.type.id, fixNameCase(locality.comp.name))] : null;
+  })();
+  const localityLabel = locality ? render(locality, t, gaz, 'final') : '';
+
+  // Тип по справочнику: «п. Аскиз», а это село.
+  for (const it of items) {
+    const n = it.node;
+    if (!n || n.region || n.type === 'country' || !it.comp.type || it.comp.typeInferred) continue;
+    if (n.type !== it.comp.type.id) {
+      const actual = TYPE_BY_ID.get(n.type);
+      if (actual) {
+        issues.push(err('type-mismatch', 'dictionary', `По справочнику «${n.name}» — ${actual.full} (${actual.short}), а указано «${it.comp.typeText ?? it.comp.type.short}»`));
+        mark(it, 'error');
+      }
     }
-    issues.push({
-      code: 'tree-conflict',
-      severity: 'error',
-      category: 'tree',
-      message: actual
-        ? `«${nodeLabel}» относится к «${gaz.label(actual)}», а указано «${ctxLabel}»`
-        : `«${nodeLabel}» не находится в «${ctxLabel}»`,
-      fix,
-    });
-    context = r.node;
-    contextRes = r;
   }
 
-  // «г. Москва» — это регион (город федерального значения).
-  for (const r of resolved) {
-    if (r.node?.level === 'region' && r.comp.level !== 'region') r.comp.level = 'region';
-  }
-
-  // Определяем регион адреса.
-  const deepest = context;
-  const regionNode = deepest ? gaz.regionOf(deepest) : null;
-
-  const comps: Resolved[] = [...resolved];
-
-  // 5. Недостающие части.
-  const has = (l: Level) => comps.some((r) => r.comp.level === l);
-  if (t.region === 'required' && !has('region')) {
-    if (regionNode && regionNode.region) {
-      comps.push({ comp: { level: 'region', type: TYPE_BY_ID.get(regionNode.type) ?? null, typeText: null, name: regionNode.name, segment: -1, start: 0, end: 0 }, node: regionNode, candidates: [regionNode], added: true });
-      issues.push({ code: 'missing-region', severity: 'warning', category: 'missing', message: `Не указан регион — по базе это «${gaz.label(regionNode)}»`, fix: '__RENDER__' });
-    } else {
-      issues.push({ code: 'missing-region', severity: 'warning', category: 'missing', message: 'Не указан регион' });
-    }
-  }
-  if (t.district === 'always' && !has('district') && deepest) {
-    const d = gaz.ancestors(deepest, true).find((n) => n.level === 'district');
-    if (d) {
-      comps.push({ comp: { level: 'district', type: TYPE_BY_ID.get(d.type) ?? null, typeText: null, name: d.name, segment: -1, start: 0, end: 0 }, node: d, candidates: [d], added: true });
-      issues.push({ code: 'missing-district', severity: 'info', category: 'missing', message: `Добавлен район по базе: «${gaz.label(d)}»`, fix: '__RENDER__' });
-    }
-  }
-  if (t.country === 'always' && !has('country')) {
-    comps.push({ comp: { level: 'country', type: null, typeText: null, name: COUNTRY_NAME, segment: 99, start: 0, end: 0 }, node: gaz.root, candidates: [], added: true });
-    issues.push({ code: 'missing-country', severity: 'info', category: 'missing', message: 'По шаблону в конце указывается страна «Россия»', fix: '__RENDER__' });
-  }
-  const index = comps.find((r) => r.comp.level === 'index');
-  if (t.index === 'required' && !index) {
-    issues.push({ code: 'missing-index', severity: 'error', category: 'missing', message: 'Нет почтового индекса (6 цифр в начале адреса)' });
-  }
-  if (t.index === 'never' && index) {
-    issues.push({ code: 'extra-index', severity: 'info', category: 'format', message: 'Индекс здесь не нужен — он будет убран', fix: '__RENDER__' });
-  }
-  if (index && regionNode?.region?.postal?.length && !regionNode.region.postal.some((p) => index.comp.name.startsWith(p))) {
-    issues.push({
-      code: 'index-region',
-      severity: 'warning',
-      category: 'tree',
-      message: `Индекс ${index.comp.name} не похож на индексы региона «${gaz.label(regionNode)}» (${regionNode.region.postal.join(', ')}…)`,
-    });
-  }
-  if (t.house === 'required' && !has('house') && (has('street') || has('settlement') || has('city'))) {
-    issues.push({ code: 'missing-house', severity: 'warning', category: 'missing', message: 'Не указан номер дома' });
-  }
-  if (t.district === 'never' && has('district')) {
-    issues.push({ code: 'extra-district', severity: 'info', category: 'format', message: 'Район по шаблону не указывается — он будет убран', fix: '__RENDER__' });
-  }
-
-  // 6. Части, которые не удалось распознать или которых нет в базе.
-  comps.forEach((r) => {
-    const c = r.comp;
-    if (r.added) return;
-    if (c.level === null) {
-      const isNum = /^\d/.test(c.name);
-      const nextIsHouse = comps[comps.indexOf(r) + 1]?.comp.level === 'house';
-      issues.push({
-        code: 'unknown-part',
-        severity: 'warning',
-        category: 'dictionary',
-        message: isNum
-          ? `Непонятный номер «${c.name}» — укажите, что это (д., корп., кв.)`
-          : nextIsHouse
-            ? `«${c.name}» — не указан тип. Если это улица, нужно «ул. ${fixNameCase(c.name)}»`
-            : `Не удалось определить, что такое «${c.name}» — укажите тип (с., г., ул.…) или добавьте в справочник`,
-        action: isNum
-          ? undefined
-          : { kind: 'add-to-dictionary', name: fixNameCase(c.name), type: nextIsHouse ? 'ul' : null, parentPath: deepest ? gaz.pathOf(deepest) : null, parentLabel: deepest ? gaz.chain(deepest) : null },
-      });
-      return;
-    }
-    if (c.level === 'region' && !r.node) {
-      const best = REGIONS.map((reg) => ({ reg, d: levenshtein(normWord(c.name), normWord(reg.name)) })).sort((a, b) => a.d - b.d)[0];
-      const close = best && best.d <= 2;
-      issues.push({
-        code: 'unknown-region',
-        severity: 'error',
-        category: 'typo',
-        message: close ? `Неизвестный регион «${c.name}». Возможно, «${best.reg.short}»?` : `Неизвестный регион «${c.name}»`,
-      });
-      if (close) {
-        const node = gaz.find(best.reg.name).find((n) => n.level === 'region');
-        if (node) {
-          r.node = node;
-          issues[issues.length - 1].fix = '__RENDER__';
+  // --- Улица по справочнику.
+  const street = items.find((it) => it.comp.level === 'street');
+  if (street) {
+    if (localityNode) {
+      const res = resolveName(gaz, street.comp, localityNode, (n) => n.level === 'street');
+      if (res) {
+        if (res.extra) street.comp = { ...street.comp, name: res.name };
+        street.node = res.candidates.find((n) => n.type === street.comp.type?.id) ?? res.candidates[0];
+        if (street.comp.type && street.node.type !== street.comp.type.id && !street.comp.typeGuessed) {
+          const actual = TYPE_BY_ID.get(street.node.type)!;
+          issues.push(err('type-mismatch', 'dictionary', `По справочнику — ${actual.full} ${street.node.name} (${actual.short}), а указано «${street.comp.typeText ?? street.comp.type.short}»`));
+          mark(street, 'error');
         }
       }
-      return;
     }
-    if ((c.level === 'district' || c.level === 'city' || c.level === 'settlement' || c.level === 'area') && !r.node) {
-      // Ищем родителя: ближайшая распознанная часть выше по уровню.
-      const parent = comps
-        .filter((o) => o.node && o.comp.level && levelRank(o.comp.level) < levelRank(c.level!))
-        .sort((a, b) => levelRank(b.comp.level!) - levelRank(a.comp.level!))[0]?.node;
-      issues.push({
-        code: 'not-in-dictionary',
-        severity: 'info',
-        category: 'dictionary',
-        message: `«${fixNameCase(c.name)}» нет в справочнике${parent ? ` (${gaz.label(parent)})` : ''} — проверка по дереву неполная`,
-        action: {
-          kind: 'add-to-dictionary',
-          name: fixNameCase(c.name),
-          type: c.type?.id ?? null,
-          parentPath: parent ? gaz.pathOf(parent) : null,
-          parentLabel: parent ? gaz.chain(parent) : null,
-        },
-      });
+    if (!street.node && t.verify.street && t.parts.street !== 'never') {
+      const type = street.comp.type?.id ?? 'ul';
+      const name = fixNameCase(street.comp.name);
+      issues.push(
+        confirm('street-unknown', 'dictionary', `Улицы «${render(street, t, gaz, 'final')}» нет в справочнике${localityLabel ? ` для «${localityLabel}»` : ''} — проверьте и подтвердите`, {
+          action: { kind: 'add-place', name, type, parentPath: localityPath, parentLabel: localityNode ? gaz.chain(localityNode) : localityLabel || null },
+        }),
+      );
+      mark(street, 'confirm');
     }
+  }
+
+  // --- Индекс.
+  const index = items.find((it) => it.comp.level === 'index');
+  if (index) {
+    const prefixes = regionNode?.region?.postal;
+    if (prefixes?.length && !prefixes.some((p) => index.comp.name.startsWith(p))) {
+      issues.push(err('index-region', 'consistency', `Индекс ${index.comp.name} не относится к региону «${gaz.label(regionNode!)}» (индексы региона начинаются с ${prefixes.slice(0, 5).join(', ')}${prefixes.length > 5 ? '…' : ''})`));
+      mark(index, 'error');
+    } else if (t.verify.index && t.parts.index !== 'never' && locality) {
+      const known = localityNode?.postal ?? [];
+      if (!known.includes(index.comp.name)) {
+        issues.push(
+          confirm('index-unknown', 'dictionary', `Индекс ${index.comp.name} не подтверждён для «${localityLabel}»${known.length ? ` (известны: ${known.join(', ')})` : ''} — проверьте и подтвердите`, {
+            action: localityPath ? { kind: 'add-postal', index: index.comp.name, path: localityPath, label: `Индекс ${index.comp.name} → ${localityLabel}` } : undefined,
+          }),
+        );
+        mark(index, 'confirm');
+      }
+    }
+  }
+
+  // --- Нераспознанные части.
+  items.forEach((it, i) => {
+    const c = it.comp;
+    if (c.level !== null) return;
+    if (/^\d/.test(c.name)) {
+      const msg = i === 0 && /^\d{5,7}$/.test(c.name) ? `Индекс должен состоять из 6 цифр, а здесь ${c.name.length}` : `Непонятный номер «${c.name}» — укажите, что это (д., корп., кв.)`;
+      issues.push(err('unknown-number', 'format', msg));
+    } else {
+      const parent = knownParentOf(it);
+      issues.push(
+        err('unknown-part', 'format', `Не удалось определить, что такое «${c.name}». Укажите тип (г., с., ул.…) или добавьте в справочник`, {
+          action: { kind: 'add-place', name: fixNameCase(c.name), type: null, parentPath: parent ? gaz.pathOf(parent) : null, parentLabel: parent ? gaz.chain(parent) : null },
+        }),
+      );
+    }
+    mark(it, 'error');
   });
 
-  // 7. Тип в базе отличается от указанного («п. Аскиз», а это село).
-  for (const r of comps) {
-    const c = r.comp;
-    if (r.added || !r.node || !c.type || c.typeInferred || c.typeImplicit) continue;
-    if (r.node.region || r.node.type === 'country') continue;
-    if (r.node.type !== c.type.id) {
-      const actual = TYPE_BY_ID.get(r.node.type);
-      const populated = (l: Level) => l === 'city' || l === 'settlement';
-      if (actual && (actual.level === c.type.level || (populated(actual.level) && populated(c.type.level)))) {
-        issues.push({
-          code: 'type-mismatch',
-          severity: 'warning',
-          category: 'tree',
-          message: `«${r.node.name}» по справочнику — ${actual.full} (${actual.short}), а указано «${c.typeText ?? c.type.short}»`,
-          fix: '__RENDER__',
-        });
-        c.type = actual;
-      }
+  // --- Номера домов и квартир.
+  for (const it of items) {
+    if (!it.comp.type?.numbered) continue;
+    const n = numberText(it.comp, t);
+    const ok = it.comp.level === 'house' ? /^\d+[\p{L}]?(\/\d+[\p{L}]?)?$/u.test(n) : /^(\d+[\p{L}]?|[\p{L}])$/u.test(n);
+    if (!ok || !it.comp.name) {
+      issues.push(err('number-format', 'format', `${LEVEL_LABELS[it.comp.level!]}: неверный номер «${it.comp.name}»`));
+      mark(it, 'error');
     }
   }
 
-  // 8. Формат: сокращения, точки, регистр, отсутствующие типы.
-  for (const r of comps) {
-    const c = r.comp;
-    if (r.added) continue;
-    if (c.typeInferred && c.level && c.level !== 'country' && c.level !== 'index') {
-      const label = r.node ? gaz.label(r.node, c.level === 'region' ? t.regionStyle : t.typeStyle) : c.name;
-      issues.push({ code: 'type-missing', severity: 'warning', category: 'format', message: `Не указан тип: «${c.name}» → «${label}»`, fix: '__RENDER__' });
-    }
-    if (c.typeGuessed) {
-      issues.push({
-        code: 'type-guessed',
-        severity: 'warning',
-        category: 'format',
-        message: `Не указан тип: «${c.name}» — похоже на улицу, «ул. ${fixNameCase(c.name)}» (если это переулок или проспект — поправьте)`,
-        fix: '__RENDER__',
-      });
-    }
-    if (c.shorthand && c.level === 'house') {
-      const flat = comps.find((o) => o.comp.shorthand && o.comp.level === 'flat');
-      issues.push({ code: 'shorthand', severity: 'warning', category: 'format', message: `«${c.name}-${flat?.comp.name}» понято как «д. ${c.name}, кв. ${flat?.comp.name}»`, fix: '__RENDER__' });
-    } else if (c.typeImplicit && !c.shorthand) {
-      issues.push({ code: 'type-missing', severity: 'warning', category: 'format', message: `Номер без обозначения: «${c.name}» → «${c.type?.short} ${c.name}»`, fix: '__RENDER__' });
-    }
-    if (c.typeMisplaced) {
-      issues.push({ code: 'type-misplaced', severity: 'warning', category: 'format', message: `Тип стоит после названия: «${c.name} ${c.typeText}» → «${c.type?.short} ${c.name}»`, fix: '__RENDER__' });
-    }
-    if (c.type && c.typeText && c.level !== 'region') {
-      const want = t.typeStyle === 'short' ? c.type.short : c.type.full;
-      const written = c.typeText;
-      if (normWord(written) !== normWord(want)) {
-        issues.push({ code: 'type-form', severity: 'warning', category: 'format', message: `«${written}» → «${want}»`, fix: '__RENDER__' });
-      } else if (t.typeStyle === 'short' && needsDot(c.type) && !written.endsWith('.')) {
-        issues.push({ code: 'type-dot', severity: 'warning', category: 'format', message: `Сокращение без точки: «${written}» → «${want}»`, fix: '__RENDER__' });
-      } else if (written !== want && written.toLowerCase() === want.toLowerCase()) {
-        issues.push({ code: 'type-case', severity: 'info', category: 'format', message: `Регистр сокращения: «${written}» → «${want}»`, fix: '__RENDER__' });
-      }
-    }
-    if (c.level === 'region' && r.node && !c.typeInferred && !c.typeMisplaced && !nameIsBadCase(c.name)) {
-      const written = clean.slice(c.start, c.end);
-      const want = gaz.label(r.node, t.regionStyle);
-      if (normWord(written).replace(/\s+/g, ' ') !== normWord(want).replace(/\s+/g, ' ')) {
-        issues.push({ code: 'region-form', severity: 'warning', category: 'format', message: `Регион по шаблону: «${written}» → «${want}»`, fix: '__RENDER__' });
-      }
-    }
-    if (c.level && NAMED_LEVELS.includes(c.level) && nameIsBadCase(c.name)) {
-      issues.push({ code: 'name-case', severity: 'warning', category: 'format', message: `Регистр названия: «${c.name}» → «${r.node?.name ?? fixNameCase(c.name)}»`, fix: '__RENDER__' });
-    } else if (r.node && !r.node.region && r.node.name !== c.name && normWord(r.node.name) === normWord(c.name)) {
-      issues.push({ code: 'name-spelling', severity: 'info', category: 'format', message: `Написание по справочнику: «${r.node.name}»`, fix: '__RENDER__' });
-    }
+  // --- Повторы.
+  const counts = new Map<Level, number>();
+  for (const it of items) if (it.comp.level) counts.set(it.comp.level, (counts.get(it.comp.level) ?? 0) + 1);
+  for (const [lvl, n] of counts) {
+    if (n > 1 && lvl !== 'settlement') issues.push(err('duplicate-part', 'format', `${LEVEL_LABELS[lvl]} указан(а) ${n} раза`));
   }
 
-  // 9. Повторы уровней.
-  const seen = new Map<Level, number>();
-  for (const r of comps) {
-    if (!r.comp.level) continue;
-    seen.set(r.comp.level, (seen.get(r.comp.level) ?? 0) + 1);
+  // --- Обязательные и запрещённые части по шаблону.
+  const has = (l: Level) => items.some((it) => it.comp.level === l || (l === 'city' && populated(it.comp.level)));
+  const final: Item[] = [...items];
+  const addPart = (level: Level, node: GeoNode | null, name: string) =>
+    final.push({ comp: { level, type: node ? (TYPE_BY_ID.get(node.type) ?? null) : null, typeText: null, name, segment: -1, start: 0, end: 0 }, node, added: true, status: 'ok' });
+
+  const P = t.parts;
+  if (P.index === 'required' && !has('index')) issues.push(err('missing-index', 'missing', 'Нет почтового индекса (6 цифр в начале адреса)'));
+  if (P.region === 'required' && !has('region')) {
+    if (regionNode) {
+      addPart('region', regionNode, regionNode.name);
+      issues.push(err('missing-region', 'missing', `Не указан регион — по справочнику «${gaz.label(regionNode, t.regionStyle)}»`));
+    } else issues.push(err('missing-region', 'missing', 'Не указан регион'));
   }
-  for (const [lvl, n] of seen) {
-    if (n > 1 && lvl !== 'settlement' && lvl !== 'area') {
-      issues.push({ code: 'duplicate-level', severity: 'warning', category: 'format', message: `Часть «${LEVEL_LABELS[lvl]}» указана ${n} раза` });
+  if (!locality) issues.push(err('missing-locality', 'missing', 'Не указан населённый пункт (г., с., пгт…)'));
+  if (P.district === 'required' && !has('district') && localityNode) {
+    const d = gaz.ancestors(localityNode).find((n) => n.level === 'district');
+    if (d) {
+      addPart('district', d, d.name);
+      issues.push(err('missing-district', 'missing', `Не указан район — по справочнику «${gaz.label(d)}»`));
     }
   }
+  if (P.country === 'required' && !has('country')) {
+    addPart('country', gaz.root, COUNTRY_NAME);
+    issues.push(err('missing-country', 'missing', 'В конце указывается страна «Россия»'));
+  }
+  if (P.street === 'required' && !has('street') && locality) issues.push(err('missing-street', 'missing', 'Не указана улица'));
+  if (P.house === 'required' && !has('house') && locality) issues.push(err('missing-house', 'missing', 'Не указан номер дома'));
 
-  // 10. Порядок частей и запятые.
-  const original = resolved.filter((r) => r.comp.level && r.comp.level !== 'index' && r.comp.level !== 'country');
-  const ranks = original.map((r) => levelRank(r.comp.level!));
+  const forbidden: Partial<Record<Level, string>> = {
+    index: P.index === 'never' ? 'Индекс' : undefined,
+    country: P.country === 'never' ? 'Страна' : undefined,
+    district: P.district === 'never' ? 'Район' : undefined,
+    street: P.street === 'never' ? 'Улица' : undefined,
+    house: P.house === 'never' ? 'Дом' : undefined,
+    building: P.building === 'never' ? 'Корпус/строение' : undefined,
+    flat: P.flat === 'never' ? 'Квартира' : undefined,
+  };
+  const kept = final.filter((it) => {
+    const label = it.comp.level ? forbidden[it.comp.level] : undefined;
+    if (!label) return true;
+    issues.push(err('extra-part', 'format', `${label} в этом адресе не указывается — уберите «${render(it, t, gaz, 'local')}»`));
+    mark(it, 'error');
+    return false;
+  });
+
+  // --- Порядок и место типа.
   const dir = t.order === 'big-to-small' ? 1 : -1;
-  const badOrder = ranks.some((rk, i) => i > 0 && (rk - ranks[i - 1]) * dir < 0);
-  if (badOrder) {
-    const words = t.order === 'big-to-small' ? 'от крупного к мелкому: регион → район → населённый пункт → улица → дом' : 'от мелкого к крупному: населённый пункт → район → регион → страна';
-    issues.push({ code: 'order', severity: 'warning', category: 'order', message: `Нарушен порядок частей адреса. Нужно ${words}`, fix: '__RENDER__' });
+  const written = items.filter((it) => it.comp.level && it.comp.level !== 'index');
+  const ranks = written.map((it) => levelRank(it.comp.level!));
+  if (ranks.some((r, i) => i > 0 && (r - ranks[i - 1]) * dir < 0)) {
+    issues.push(
+      err(
+        'order',
+        'format',
+        t.order === 'big-to-small'
+          ? 'Нарушен порядок: нужно от крупного к мелкому — регион, населённый пункт, улица, дом, квартира'
+          : 'Нарушен порядок: нужно от мелкого к крупному — населённый пункт, район, регион, страна',
+      ),
+    );
   }
-  if (t.separator.includes(',')) {
-    const pairs: string[] = [];
-    for (let i = 1; i < resolved.length; i++) {
-      const a = resolved[i - 1].comp;
-      const b = resolved[i].comp;
-      if (a.segment === b.segment && a.segment >= 0 && !(a.shorthand && b.shorthand)) {
-        pairs.push(`«${clean.slice(a.start, a.end)}» и «${clean.slice(b.start, b.end)}»`);
-      }
+  const idxPos = items.findIndex((it) => it.comp.level === 'index');
+  if (idxPos > 0) issues.push(err('order', 'format', 'Индекс пишется в начале адреса'));
+  for (const it of items) {
+    if (it.comp.typeMisplaced) {
+      issues.push(err('type-misplaced', 'format', `Тип стоит не на своём месте: «${render(it, t, gaz, 'local')}» → «${render(it, t, gaz, 'final')}»`));
+      mark(it, 'error');
     }
-    if (pairs.length === 1) {
-      issues.push({ code: 'missing-comma', severity: 'warning', category: 'format', message: `Не хватает запятой между ${pairs[0]}`, fix: '__RENDER__' });
-    } else if (pairs.length > 1) {
-      issues.push({ code: 'missing-comma', severity: 'warning', category: 'format', message: `Части адреса не разделены запятыми (${pairs.length} места)`, fix: '__RENDER__' });
-    }
   }
 
-  // 11. Сборка исправленного адреса по шаблону.
-  const output = comps
-    .filter((r) => !(t.index === 'never' && r.comp.level === 'index'))
-    .filter((r) => !(t.country === 'never' && r.comp.level === 'country'))
-    .filter((r) => !(t.district === 'never' && r.comp.level === 'district'))
-    .map((r, i) => ({ r, i, rank: r.comp.level ? levelRank(r.comp.level) : NaN }));
-  // Нераспознанные части встают сразу после соседа слева.
-  output.forEach((o, i) => {
-    if (Number.isNaN(o.rank)) o.rank = i > 0 ? output[i - 1].rank + 0.5 : 0.5;
-  });
-  output.sort((a, b) => (a.rank - b.rank) * dir || a.i - b.i);
-  // Индекс всегда в начале (для обратного порядка — тоже в начале, как пишут на конвертах).
-  const idx = output.findIndex((o) => o.r.comp.level === 'index');
-  if (idx > 0) output.unshift(...output.splice(idx, 1));
-  const texts = output.map((o) => renderComponent(o.r.comp, o.r.node, t, gaz));
-  const suggestion = texts.join(t.separator);
+  // --- Две формы: «как написано, но правильно» и «строго по шаблону».
+  const local = items.map((it) => render(it, t, gaz, 'local')).join(t.separator);
+  const ordered = kept
+    .map((it, i) => ({ it, i, rank: it.comp.level ? levelRank(it.comp.level) : NaN }))
+    .map((o, i, arr) => (Number.isNaN(o.rank) ? { ...o, rank: i > 0 ? arr[i - 1].rank + 0.5 : 0.5 } : o))
+    .sort((a, b) => (a.rank - b.rank) * dir || a.i - b.i);
+  const idx = ordered.findIndex((o) => o.it.comp.level === 'index');
+  if (idx > 0) ordered.unshift(...ordered.splice(idx, 1));
+  const canonical = ordered.map((o) => render(o.it, t, gaz, 'final')).join(t.separator);
 
-  for (const is of issues) if (is.fix === '__RENDER__') is.fix = suggestion;
-
-  if (suggestion !== value && !issues.some((i) => i.fix)) {
-    issues.push({ code: 'format', severity: 'info', category: 'format', message: 'Формат отличается от шаблона', fix: suggestion });
-  }
-
-  // 12. Части для отображения.
-  const parts: AddressPart[] = output.map((o, k) => {
-    const c = o.r.comp;
-    const known = !!o.r.node;
-    const isUnknown = c.level === null;
-    const named = c.level && NAMED_LEVELS.includes(c.level) && c.level !== 'street';
+  const parts: AddressPart[] = ordered.map(({ it }) => {
+    const node = finalOf(it);
     return {
-      level: c.level,
-      levelLabel: c.level ? LEVEL_LABELS[c.level] : 'Не распознано',
-      text: texts[k],
-      original: o.r.added ? '' : clean.slice(c.start, c.end),
-      known,
-      node: o.r.node ?? undefined,
-      chain: o.r.node && o.r.node.type !== 'country' ? gaz.chain(o.r.node) : undefined,
-      status: conflicts.has(o.r) ? 'error' : isUnknown ? 'warning' : named && !known ? 'info' : 'ok',
+      level: it.comp.level,
+      levelLabel: it.comp.level ? LEVEL_LABELS[it.comp.level] : 'Не распознано',
+      text: render(it, t, gaz, 'final'),
+      known: !!node,
+      chain: node && node.type !== 'country' ? gaz.chain(node) : undefined,
+      status: it.status,
     };
   });
-  return { parts, issues, suggestion, regionNode };
+
+  // Структурные ошибки исправляются приведением к шаблону.
+  const FIXABLE = new Set(['tree-conflict', 'type-mismatch', 'missing-region', 'missing-district', 'missing-country', 'extra-part', 'order', 'type-misplaced']);
+  if (canonical !== value) for (const i of issues) if (FIXABLE.has(i.code) && i.fix === undefined) i.fix = canonical;
+
+  return { canonical, explainAgainst: local, issues, parts, regionNode, localityNode };
 }
+

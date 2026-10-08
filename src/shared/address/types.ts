@@ -44,3 +44,16 @@ export interface AddrType {
   /** После типа ожидается номер (дом, квартира…). */
   numbered?: boolean;
 }
+
+/** Часть адреса для показа в интерфейсе. */
+export interface AddressPart {
+  level: Level | null;
+  levelLabel: string;
+  /** Как часть выглядит по шаблону. */
+  text: string;
+  /** Найдена в справочнике. */
+  known: boolean;
+  /** Полная цепочка по справочнику: «с. Аскиз, Аскизский р-н, Респ. Хакасия». */
+  chain?: string;
+  status: 'ok' | 'error' | 'confirm';
+}

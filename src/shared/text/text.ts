@@ -1,14 +1,7 @@
 /*
- * Общие текстовые проверки и исправления.
- * Каждая функция возвращает найденные проблемы с позициями (для подсветки) и исправленный текст.
+ * Общие текстовые исправления: пробелы, латинские буквы-двойники, кавычки, регистр, опечатки.
+ * Сами огрехи находит строгое сравнение с шаблоном (shared/check), здесь — только построение правильной формы.
  */
-
-export interface TextProblem {
-  code: string;
-  message: string;
-  /** Позиция в исходной строке [start, end). */
-  span?: [number, number];
-}
 
 // ---------- Пробелы и невидимые символы ----------
 
@@ -20,17 +13,6 @@ export function fixSpaces(s: string): string {
     .replace(/ +([,.;:)»])/g, '$1')
     .replace(/([(«]) +/g, '$1')
     .trim();
-}
-
-export function spaceProblems(s: string): TextProblem[] {
-  const out: TextProblem[] = [];
-  if (/^\s/.test(s) || /\s$/.test(s)) out.push({ code: 'trim', message: 'Лишние пробелы в начале или в конце' });
-  for (const m of s.matchAll(/ {2,}/g)) out.push({ code: 'double-space', message: 'Двойной пробел', span: [m.index!, m.index! + m[0].length] });
-  for (const m of s.matchAll(/[ \t\r\n​‌‍﻿]/g)) {
-    out.push({ code: 'invisible', message: 'Невидимый или служебный символ (перенос строки, табуляция, неразрывный пробел)', span: [m.index!, m.index! + 1] });
-  }
-  for (const m of s.matchAll(/ +[,;)]/g)) out.push({ code: 'space-before-punct', message: 'Пробел перед знаком препинания', span: [m.index!, m.index! + m[0].length] });
-  return out;
 }
 
 // ---------- Латинские буквы в русских словах ----------
@@ -46,26 +28,6 @@ const CYR_TO_LAT: Record<string, string> = {
 
 const CYR = /[а-яё]/i;
 const LAT = /[a-z]/i;
-
-/** Найти слова, где смешаны кириллица и латиница (типичная ошибка: «Иванoв» с латинской «o»). */
-export function mixedScriptProblems(s: string): TextProblem[] {
-  const out: TextProblem[] = [];
-  for (const m of s.matchAll(/[\p{L}]+/gu)) {
-    const w = m[0];
-    if (CYR.test(w) && LAT.test(w)) {
-      const cyrCount = [...w].filter((ch) => CYR.test(ch)).length;
-      const latCount = [...w].filter((ch) => LAT.test(ch)).length;
-      const toCyr = cyrCount >= latCount;
-      const bad = [...w].filter((ch) => (toCyr ? LAT.test(ch) : CYR.test(ch)));
-      out.push({
-        code: 'mixed-script',
-        message: `В слове «${w}» смешаны русские и латинские буквы (${toCyr ? 'латинские' : 'русские'}: ${[...new Set(bad)].join(', ')})`,
-        span: [m.index!, m.index! + w.length],
-      });
-    }
-  }
-  return out;
-}
 
 export function fixMixedScript(s: string): string {
   return s.replace(/[\p{L}]+/gu, (w) => {
@@ -95,29 +57,6 @@ export function normalizeQuotes(s: string, style: QuoteStyle): string {
   });
 }
 
-export function quoteProblems(s: string, style: QuoteStyle): TextProblem[] {
-  const out: TextProblem[] = [];
-  const quotes = [...s.matchAll(QUOTE_CHARS)];
-  if (!quotes.length) return out;
-  const normalized = normalizeQuotes(s, 'guillemets');
-  let depth = 0;
-  let unbalanced = false;
-  for (const ch of normalized) {
-    if (ch === '«') depth++;
-    if (ch === '»') depth--;
-    if (depth < 0) unbalanced = true;
-  }
-  if (depth !== 0 || unbalanced) out.push({ code: 'quotes-unbalanced', message: 'Непарные кавычки: открывающих и закрывающих разное количество' });
-  const kinds = new Set(quotes.map((q) => (q[0] === '«' || q[0] === '»' ? 'g' : q[0] === '"' ? 's' : 'c')));
-  if (kinds.size > 1) {
-    out.push({ code: 'quotes-mixed', message: 'Кавычки разного вида (например, "…» )' });
-  } else if (style !== 'keep') {
-    const want = style === 'guillemets' ? 'g' : 's';
-    if (!kinds.has(want)) out.push({ code: 'quotes-style', message: style === 'guillemets' ? 'Рекомендуются кавычки-ёлочки «…»' : 'Рекомендуются прямые кавычки "…"' });
-  }
-  return out;
-}
-
 // ---------- Регистр ----------
 
 const LOWER_WORDS = new Set(['и', 'на', 'в', 'де', 'лет', 'имени', 'им', 'им.', 'ла', 'фон', 'дер', 'ван', 'оглы', 'кызы', 'по']);
@@ -142,7 +81,7 @@ export function fixNameCase(s: string): string {
 }
 
 /** Аббревиатуры организаций, которые пишутся прописными. */
-export const UPPER_ABBR = [
+const UPPER_ABBR = [
   'МВД', 'УМВД', 'ГУ', 'ОУФМС', 'УФМС', 'ФМС', 'ТП', 'ОВД', 'ОВМ', 'УВМ', 'ГУВМ', 'РОВД', 'МО', 'МП', 'РФ', 'РХ', 'РТ', 'РБ',
   'ГБПОУ', 'ГАПОУ', 'ГБОУ', 'МБОУ', 'МАОУ', 'ФГБОУ', 'ФГАОУ', 'ГОУ', 'АНО', 'ЧОУ', 'ВО', 'СПО', 'ДПО', 'НИУ', 'ХГУ', 'ХТИ', 'СФУ',
   'ООО', 'ПАО', 'АО', 'ИП', 'РО', 'СО', 'ЛСО', 'РСО', 'МЧС',

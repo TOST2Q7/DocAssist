@@ -24,7 +24,8 @@ export interface Token {
 
 export function tokenize(text: string): Token[] {
   const out: Token[] = [];
-  const re = /(\d+(?:[/-]\d+)?(?:[\p{L}](?![\p{L}]))?)|([\p{L}(][\p{L}()'’.-]*)|([,;])|(\s[-–—]\s|^[-–—]\s)/gu;
+  // Номер: «1», «1а», «5/1», «12-14», «1/а/б» (последние два — ошибка формата, но одним куском).
+  const re = /(\d+(?:[/-][\d\p{L}]+)*(?:[\p{L}](?![\p{L}]))?)|([\p{L}(][\p{L}()'’.-]*)|([,;])|(\s[-–—]\s|^[-–—]\s)/gu;
   for (const m of text.matchAll(re)) {
     const [whole, num, word, sep, dash] = m;
     const start = m.index!;
@@ -107,12 +108,20 @@ export function parseAddress(text: string, gaz: Gazetteer): ParseResult {
     pending = [];
   };
 
-  /** Если в имени несколько слов и первые совпадают с базой — отделить остаток («Хакасия Россия»). */
+  /**
+   * Если в имени несколько слов, начало совпадает с базой, а остаток — тоже известное название
+   * («Аскиз Аскизский» перед «р-н»), отделяем остаток в отдельную часть.
+   * Неизвестный остаток («Ленина Привет») не отделяем: это лишние слова, о них скажет проверка.
+   */
   const splitKnownPrefix = (words: Token[], t: AddrType | null): Token[] => {
     if (words.length < 2) return words;
     for (let k = words.length; k >= 1; k--) {
       const name = words.slice(0, k).map((w) => w.text).join(' ');
-      if (gaz.find(name).some((n) => COMPATIBLE_LEVEL(n, t))) return words.slice(0, k);
+      if (!gaz.find(name).some((n) => COMPATIBLE_LEVEL(n, t))) continue;
+      if (k === words.length) return words;
+      const rest = words.slice(k).map((w) => w.text);
+      const restKnown = rest.some((_, i) => gaz.hasName(rest.slice(0, rest.length - i).join(' ')));
+      return restKnown ? words.slice(0, k) : words;
     }
     return words;
   };

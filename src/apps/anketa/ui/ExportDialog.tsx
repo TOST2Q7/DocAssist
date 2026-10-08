@@ -22,12 +22,12 @@ interface Props {
   onClose: () => void;
 }
 
-type Quick = 'all' | 'clean' | 'reviewed' | 'none';
+type Quick = 'all' | 'ready' | 'reviewed' | 'none';
 
 export function ExportDialog({ model, headers, originals, session, fileName, sheetName, onClose }: Props) {
   const { workspace } = useWorkspace();
   const toast = useToast();
-  const [selected, setSelected] = useState<Set<number>>(() => new Set(model.results.map((r) => r.row)));
+  const [selected, setSelected] = useState<Set<number>>(() => new Set(model.results.filter((r) => r.ready).map((r) => r.row)));
   const [format, setFormat] = useState<'xlsx' | 'csv'>('xlsx');
   const [withNotes, setWithNotes] = useState(true);
   const [withChanges, setWithChanges] = useState(false);
@@ -36,7 +36,7 @@ export function ExportDialog({ model, headers, originals, session, fileName, she
   const [query, setQuery] = useState('');
 
   const quick = (q: Quick) => {
-    const rows = model.results.filter((r) => (q === 'all' ? true : q === 'clean' ? r.counts.error === 0 : q === 'reviewed' ? session.reviewed.includes(r.row) : false));
+    const rows = model.results.filter((r) => (q === 'all' ? true : q === 'ready' ? r.ready : q === 'reviewed' ? session.reviewed.includes(r.row) : false));
     setSelected(new Set(rows.map((r) => r.row)));
   };
   const toggle = (row: number) =>
@@ -55,14 +55,20 @@ export function ExportDialog({ model, headers, originals, session, fileName, she
   const build = () => {
     const rows = model.results.filter((r) => selected.has(r.row));
     const outHeaders = [...headers];
-    if (withNotes) outHeaders.push('Замечания');
+    if (withNotes) outHeaders.push('Замечания', 'Принято как есть');
     if (withChanges) outHeaders.push('Изменения');
     const out = rows.map((r) => {
       const values = [...model.values[r.row]];
       if (withNotes) {
+        const label = (col: number, id: string | null) => (id && FIELD_BY_ID.get(id)?.label) || headers[col];
         values.push(
           r.fields
-            .flatMap((f) => f.issues.filter((i) => i.severity !== 'info').map((i) => `${(f.fieldId && FIELD_BY_ID.get(f.fieldId)?.label) || headers[f.col]}: ${i.message}`))
+            .filter((f) => !f.accepted)
+            .flatMap((f) => f.issues.map((i) => `${label(f.col, f.fieldId)}: ${i.level === 'confirm' ? 'подтвердить — ' : ''}${i.message}`))
+            .join('; '),
+          r.fields
+            .filter((f) => f.accepted && f.issues.length)
+            .map((f) => `${label(f.col, f.fieldId)}: ${f.issues.map((i) => i.message).join(', ')}`)
             .join('; '),
         );
       }
@@ -128,7 +134,7 @@ export function ExportDialog({ model, headers, originals, session, fileName, she
         </div>
         <div className="row">
           <label className="check">
-            <input type="checkbox" checked={withNotes} onChange={(e) => setWithNotes(e.target.checked)} /> Столбец «Замечания» (что осталось неисправленным)
+            <input type="checkbox" checked={withNotes} onChange={(e) => setWithNotes(e.target.checked)} /> Столбцы «Замечания» и «Принято как есть»
           </label>
           <label className="check">
             <input type="checkbox" checked={withChanges} onChange={(e) => setWithChanges(e.target.checked)} /> Столбец «Изменения»
@@ -139,16 +145,22 @@ export function ExportDialog({ model, headers, originals, session, fileName, she
           <button className="btn btn--sm" onClick={() => quick('all')}>
             Всех
           </button>
-          <button className="btn btn--sm" onClick={() => quick('clean')}>
-            Без ошибок
+          <button className="btn btn--sm" onClick={() => quick('ready')}>
+            Готовых
           </button>
           <button className="btn btn--sm" onClick={() => quick('reviewed')}>
-            Проверенных
+            Просмотренных
           </button>
           <button className="btn btn--sm btn--ghost" onClick={() => quick('none')}>
             Снять всех
           </button>
         </div>
+        {!model.results.some((r) => r.ready) && (
+          <p className="small muted" style={{ margin: 0 }}>
+            Готовых анкет пока нет (у всех есть ошибки или неподтверждённое). Если нужно выгрузить как есть — нажмите «Всех»: в
+            столбце «Замечания» будет видно, что осталось.
+          </p>
+        )}
         <input className="input" placeholder="Поиск по ФИО" value={query} onChange={(e) => setQuery(e.target.value)} aria-label="Поиск по ФИО" />
         <div className="list export-list">
           {visible.map((r) => (
@@ -157,7 +169,7 @@ export function ExportDialog({ model, headers, originals, session, fileName, she
               <span className="list__main">
                 <span className="list__title">{model.names[r.row] || `Строка ${r.row + 1}`}</span>
               </span>
-              {session.reviewed.includes(r.row) && <span className="badge badge--updated">проверено</span>}
+              {session.reviewed.includes(r.row) && <span className="badge">просмотрено</span>}
               <Counters counts={r.counts} compact />
             </label>
           ))}

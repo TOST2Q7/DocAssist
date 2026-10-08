@@ -1,17 +1,22 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { useDictionary } from '@/core/dictionaries/dictionaries';
+import { addDictEntry, useDictionary } from '@/core/dictionaries/dictionaries';
 import { ENUMS } from '@/core/schema/enums';
 import { matchColumns } from '@/core/schema/fields';
 import { readTable, type TableData } from '@/core/tables/tables';
 import { getDocStore, useDocStore } from '@/core/workspace/docStore';
 import { useWorkspace, useWorkspaceRevision } from '@/core/workspace/WorkspaceContext';
-import { useGazetteer } from '@/shared/address/useGazetteer';
-import { APP_FOLDER } from '../constants';
+import type { Workspace } from '@/core/workspace/workspace';
+import { TYPE_BY_ID } from '@/shared/address/addrTypes';
+import { ADDRESS_DICT, useGazetteer } from '@/shared/address/useGazetteer';
+import { toSimple } from '@/shared/check/dates';
+import type { IssueAction } from '@/shared/check/types';
+import { APP_FOLDER, APP_ID } from '../constants';
+import { buildContext, type CheckContext, type UserDictionaries } from '../check/context';
+import { DICT, type IssuedByEntry, type SpecialtyEntry } from '../check/dicts';
+import { applyTableLevel, checkPerson, findDuplicates } from '../check/engine';
 import { DEFAULT_RULES, rulesDocType, type AnketaRules } from '../model/rules';
 import { rowValues, sessionDocType, sessionPath, type AnketaSession, type CellEdit } from '../model/session';
-import { countIssues, type FieldResult, type PersonResult } from '../model/types';
-import { toSimple } from '../validation/dates';
-import { checkPerson, findDuplicates, type CheckContext, type EnumUserData } from '../validation';
+import type { PersonResult } from '../model/types';
 
 // ---------- Правила ----------
 
@@ -32,25 +37,77 @@ export function useRules() {
   };
 }
 
-// ---------- Справочники-списки ----------
+// ---------- Справочники ----------
 
-export function useEnumData(): Record<string, EnumUserData> {
-  // ENUMS — постоянный список, поэтому вызов хуков в цикле безопасен.
-  const dicts = ENUMS.map((e) => ({ id: e.id, d: useDictionary<string>(e.id) }));
-  const deps = dicts.flatMap((x) => [x.d.entries, x.d.hidden]);
+/** Все пользовательские справочники, которыми пользуется проверка. Список постоянный — хуки в цикле безопасны. */
+export function useUserDictionaries(): UserDictionaries {
+  const enumDicts = ENUMS.map((e) => ({ id: e.id, d: useDictionary<string>(e.id) }));
+  const firstNames = useDictionary<string>(DICT.firstNames);
+  const patronymics = useDictionary<string>(DICT.patronymics);
+  const emailDomains = useDictionary<string>(DICT.emailDomains);
+  const issuedBy = useDictionary<IssuedByEntry>(DICT.issuedBy);
+  const specialties = useDictionary<SpecialtyEntry>(DICT.specialties);
+  const institutions = useDictionary<string>(DICT.institutions);
+  const squads = useDictionary<string>(DICT.squads);
+  const deps = [
+    ...enumDicts.flatMap((x) => [x.d.entries, x.d.hidden]),
+    firstNames.entries,
+    patronymics.entries,
+    emailDomains.entries,
+    issuedBy.entries,
+    specialties.entries,
+    institutions.entries,
+    squads.entries,
+  ];
   return useMemo(() => {
-    const out: Record<string, EnumUserData> = {};
-    for (const { id, d } of dicts) out[id] = { values: d.entries.map((e) => e.value), hidden: d.hidden };
-    return out;
+    const values = <V,>(d: { entries: { value: V }[] }) => d.entries.map((e) => e.value);
+    const enums: UserDictionaries['enums'] = {};
+    for (const { id, d } of enumDicts) enums[id] = { values: values(d), hidden: d.hidden };
+    return {
+      enums,
+      firstNames: values(firstNames),
+      patronymics: values(patronymics),
+      emailDomains: values(emailDomains),
+      issuedBy: values(issuedBy),
+      specialties: values(specialties),
+      institutions: values(institutions),
+      squads: values(squads),
+    };
   }, deps);
 }
 
 export function useCheckContext(): CheckContext {
   const { gaz } = useGazetteer();
   const { rules } = useRules();
-  const enums = useEnumData();
-  return useMemo(() => ({ gaz, rules, enums, now: toSimple(new Date()) }), [gaz, rules, enums]);
+  const user = useUserDictionaries();
+  return useMemo(() => buildContext(gaz, rules, user, toSimple(new Date())), [gaz, rules, user]);
 }
+
+/** Подтвердить значение: добавить в справочник (и в «Предложения в базу»). */
+export async function applyDictionaryAction(ws: Workspace, a: IssueAction): Promise<boolean> {
+  switch (a.kind) {
+    case 'add-word':
+      return addDictEntry(ws, a.dict, a.value, { label: a.label, source: APP_ID });
+    case 'add-postal':
+      return addDictEntry(ws, ADDRESS_DICT, { op: 'postal', path: a.path, index: a.index }, { label: a.label, source: APP_ID });
+    case 'add-place': {
+      if (!a.type || !a.parentPath) return false;
+      return addDictEntry(ws, ADDRESS_DICT, { name: a.name, type: a.type, parentPath: a.parentPath }, { label: actionLabel(a), source: APP_ID });
+    }
+  }
+}
+
+/** Можно ли подтвердить одним нажатием (без уточнений в диалоге). */
+export const isDirectAction = (a: IssueAction) => a.kind !== 'add-place' || (!!a.type && !!a.parentPath);
+
+export function actionLabel(a: IssueAction): string {
+  if (a.kind !== 'add-place') return a.label;
+  const t = a.type ? TYPE_BY_ID.get(a.type) : undefined;
+  return `${t ? `${t.short} ` : ''}${a.name}${a.parentLabel ? ` → ${a.parentLabel}` : ''}`;
+}
+
+export const actionKey = (a: IssueAction) =>
+  JSON.stringify(a.kind === 'add-place' ? [a.kind, a.name, a.type, a.parentPath] : a.kind === 'add-postal' ? [a.kind, a.index, a.path] : [a.kind, a.dict, a.value]);
 
 // ---------- Таблица ----------
 
@@ -94,6 +151,13 @@ export function useSession(fileName: string) {
 
   return useMemo(() => {
     const update = (fn: (s: AnketaSession) => AnketaSession) => store?.update(fn);
+    const setOne = (edits: AnketaSession['edits'], row: number, col: number, value: string, orig: string) => {
+      const rowEdits: Record<string, CellEdit> = { ...(edits[row] ?? {}) };
+      if (value === orig) delete rowEdits[col];
+      else rowEdits[col] = { orig, value };
+      if (Object.keys(rowEdits).length) edits[row] = rowEdits;
+      else delete edits[row];
+    };
     return {
       session,
       loaded: !!state?.loaded,
@@ -104,48 +168,37 @@ export function useSession(fileName: string) {
       },
       setCell(row: number, col: number, value: string, orig: string) {
         update((s) => {
-          const rowEdits: Record<string, CellEdit> = { ...(s.edits[row] ?? {}) };
-          if (value === orig) delete rowEdits[col];
-          else rowEdits[col] = { orig, value };
-          const edits: AnketaSession['edits'] = { ...s.edits, [row]: rowEdits };
-          if (!Object.keys(rowEdits).length) delete edits[row];
+          const edits = { ...s.edits };
+          setOne(edits, row, col, value, orig);
           return { ...s, edits };
         });
       },
       setCells(changes: { row: number; col: number; value: string; orig: string }[]) {
         update((s) => {
           const edits = { ...s.edits };
-          for (const c of changes) {
-            const rowEdits: Record<string, CellEdit> = { ...(edits[c.row] ?? {}) };
-            if (c.value === c.orig) delete rowEdits[c.col];
-            else rowEdits[c.col] = { orig: c.orig, value: c.value };
-            edits[c.row] = rowEdits;
-            if (!Object.keys(rowEdits).length) delete edits[c.row];
-          }
+          for (const c of changes) setOne(edits, c.row, c.col, c.value, c.orig);
           return { ...s, edits };
         });
       },
       toggleReviewed(row: number) {
         update((s) => ({ ...s, reviewed: s.reviewed.includes(row) ? s.reviewed.filter((r) => r !== row) : [...s.reviewed, row] }));
       },
-      ignore(row: number, key: string, on: boolean) {
+      /** Принять значение поля «как есть» (value = null — снять принятие). */
+      accept(row: number, col: number, value: string | null) {
         update((s) => {
-          const list = new Set(s.ignored[row] ?? []);
-          if (on) list.add(key);
-          else list.delete(key);
-          return { ...s, ignored: { ...s.ignored, [row]: [...list] } };
+          const list = (s.accepted[row] ?? []).filter((a) => a.col !== col);
+          if (value !== null) list.push({ col, value, at: new Date().toISOString() });
+          return { ...s, accepted: { ...s.accepted, [row]: list } };
         });
       },
       resetAll() {
-        update((s) => ({ ...s, edits: {}, reviewed: [], ignored: {} }));
+        update((s) => ({ ...s, edits: {}, reviewed: [], accepted: {} }));
       },
     };
   }, [session, state?.loaded, state?.tooNew, state?.broken, state?.error, store]);
 }
 
 // ---------- Результаты проверки ----------
-
-export const issueKey = (col: number, code: string) => `${col}:${code}`;
 
 export interface TableModel {
   columns: (string | null)[];
@@ -164,7 +217,8 @@ export function useTableModel(table: TableData, session: AnketaSession, ctx: Che
   const columns = useMemo(() => matchColumns(table.headers), [table.headers]);
   const cache = useRef(new Map<number, { key: string; ctx: CheckContext; res: PersonResult }>());
 
-  const values = useMemo(() => table.rows.map((r, i) => rowValues(r, session, i)), [table.rows, session.edits]);
+  const edits = session.edits;
+  const values = useMemo(() => table.rows.map((r, i) => rowValues(r, { ...session, edits }, i)), [table.rows, edits]); // session меняется вместе с edits
   const names = useMemo(() => values.map((v) => personName(v, columns)), [values, columns]);
 
   const base = useMemo(
@@ -181,22 +235,7 @@ export function useTableModel(table: TableData, session: AnketaSession, ctx: Che
   );
 
   const dupes = useMemo(() => findDuplicates(values, columns, names), [values, columns, names]);
-
-  const results = useMemo(
-    () =>
-      base.map((r) => {
-        const ignored = new Set(session.ignored[r.row] ?? []);
-        const extra = dupes.get(r.row);
-        if (!ignored.size && !extra) return r;
-        const fields: FieldResult[] = r.fields.map((f) => {
-          const dup = extra?.get(f.col);
-          const issues = (dup ? [...f.issues, dup] : f.issues).filter((i) => !ignored.has(issueKey(f.col, i.code)));
-          return issues === f.issues ? f : { ...f, issues };
-        });
-        return { ...r, fields, counts: countIssues(fields) };
-      }),
-    [base, dupes, session.ignored],
-  );
+  const results = useMemo(() => base.map((r) => applyTableLevel(r, dupes.get(r.row), session.accepted[r.row])), [base, dupes, session.accepted]);
 
   return { columns, values, names, results };
 }

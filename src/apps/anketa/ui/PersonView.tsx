@@ -1,23 +1,21 @@
-import { CheckCircle2, ChevronLeft, ChevronRight, Circle, List, Star, Wand2 } from 'lucide-react';
+import { BookCheck, ChevronLeft, ChevronRight, Eye, EyeOff, List, Star, Wand2 } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import { FIELD_BY_ID } from '@/core/schema/fields';
 import { useDictionary } from '@/core/dictionaries/dictionaries';
-import { ENUM_BY_ID } from '@/core/schema/enums';
 import type { VarKind } from '@/core/variables/types';
 import { AddPlaceDialog } from '@/shared/address/ui/AddPlaceDialog';
 import { useGazetteer, ADDRESS_DICT } from '@/shared/address/useGazetteer';
-import { addDictEntry } from '@/core/dictionaries/dictionaries';
 import { useWorkspace } from '@/core/workspace/WorkspaceContext';
 import { SaveVarDialog } from '@/ui/SaveVarDialog';
 import { useToast } from '@/ui/Toast';
-import type { AddToDictionaryAction } from '@/shared/address/check';
 import { APP_ID } from '../constants';
-import type { IssueAction, PersonResult } from '../model/types';
+import { fieldStatus, type IssueAction, type PersonResult } from '../model/types';
 import { Counters } from './Counters';
-import { FieldRow, fieldStatus } from './FieldRow';
+import { FieldRow } from './FieldRow';
 import { FixAllDialog, type Change } from './FixAllDialog';
 import { GROUPS, KNOWN_GROUP_FIELDS } from './groups';
-import { issueKey, type TableModel } from './hooks';
+import { actionLabel, applyDictionaryAction, isDirectAction, type TableModel } from './hooks';
+import { collectNewWords, NewWordsDialog } from './NewWordsDialog';
 import { PersonPicker } from './PersonPicker';
 
 interface Props {
@@ -32,24 +30,28 @@ interface Props {
   onSelect: (row: number | null) => void;
   onChangeCell: (col: number, value: string) => void;
   onApply: (changes: Change[]) => void;
-  onIgnore: (key: string) => void;
+  onAccept: (col: number, value: string | null) => void;
   onToggleReviewed: () => void;
 }
 
+/** Исправления «по шаблону» для анкеты: каждое поле, у которого правильная форма отличается от написанного. */
 export function personChanges(result: PersonResult, values: string[], originals: string[], headers: string[], who?: string): Change[] {
   return result.fields
-    .filter((f) => f.suggestion !== undefined && f.suggestion !== values[f.col])
-    .map((f) => ({ row: result.row, col: f.col, from: values[f.col], to: f.suggestion!, orig: originals[f.col] ?? '', who, fieldId: f.fieldId, header: headers[f.col] }));
+    .filter((f) => !f.accepted && f.canonical !== undefined && f.canonical !== values[f.col])
+    .map((f) => ({ row: result.row, col: f.col, from: values[f.col], to: f.canonical!, orig: originals[f.col] ?? '', who, fieldId: f.fieldId, header: headers[f.col] }));
 }
 
-export function PersonView({ model, headers, originals, row, reviewed, readOnly, fileLabel, onSelect, onChangeCell, onApply, onIgnore, onToggleReviewed }: Props) {
+type AddPlaceAction = Extract<IssueAction, { kind: 'add-place' }>;
+
+export function PersonView({ model, headers, originals, row, reviewed, readOnly, fileLabel, onSelect, onChangeCell, onApply, onAccept, onToggleReviewed }: Props) {
   const result = model.results[row];
   const values = model.values[row];
   const name = model.names[row] || `Строка ${row + 1}`;
   const [onlyIssues, setOnlyIssues] = useState(false);
   const [fixAll, setFixAll] = useState<Change[] | null>(null);
+  const [newWords, setNewWords] = useState(false);
   const [saveVar, setSaveVar] = useState<{ value: string; label: string; kind: VarKind; key?: string } | null>(null);
-  const [addPlace, setAddPlace] = useState<AddToDictionaryAction | null>(null);
+  const [addPlace, setAddPlace] = useState<AddPlaceAction | null>(null);
   const { gaz } = useGazetteer();
   const { workspace } = useWorkspace();
   const toast = useToast();
@@ -62,13 +64,16 @@ export function PersonView({ model, headers, originals, row, reviewed, readOnly,
   );
   const isReviewed = reviewed.includes(row);
   const changes = personChanges(result, values, originals, headers);
+  const words = useMemo(() => collectNewWords([result], model.names, headers), [result, model.names, headers]);
 
-  const onAction = (a: IssueAction) => {
+  const onAction = async (a: IssueAction) => {
     if (!workspace) return;
-    if (a.kind === 'add-enum') {
-      addDictEntry(workspace, a.dict, a.value, { label: `${ENUM_BY_ID.get(a.dict)?.title ?? a.dict}: ${a.value}`, source: APP_ID });
-      toast(`«${a.value}» добавлено в справочник «${ENUM_BY_ID.get(a.dict)?.title ?? a.dict}»`);
-    } else setAddPlace(a);
+    if (!isDirectAction(a) && a.kind === 'add-place') {
+      setAddPlace(a);
+      return;
+    }
+    const added = await applyDictionaryAction(workspace, a);
+    toast(added ? `Подтверждено: ${actionLabel(a)}` : 'Это значение уже есть в справочнике');
   };
 
   const fio = [values[model.columns.indexOf('person.lastName')], values[model.columns.indexOf('person.firstName')], values[model.columns.indexOf('person.middleName')]]
@@ -90,7 +95,7 @@ export function PersonView({ model, headers, originals, row, reviewed, readOnly,
         </button>
       </div>
 
-      <div className="person-head card">
+      <div className={`person-head card ${result.ready ? 'person-head--ready' : ''}`}>
         <div className="person-head__main">
           <h2>{name}</h2>
           <div className="row small muted">
@@ -102,13 +107,13 @@ export function PersonView({ model, headers, originals, row, reviewed, readOnly,
         </div>
         <div className="row">
           <button className="btn btn--primary" onClick={() => setFixAll(changes)} disabled={readOnly || !changes.length}>
-            <Wand2 size={16} /> Исправить всё ({changes.length})
+            <Wand2 size={16} /> Исправить по шаблону ({changes.length})
           </button>
-          <button className="btn" onClick={() => setSaveVar({ value: fio, label: `ФИО: ${fio}`, kind: 'fio', key: undefined })} disabled={!fio}>
+          <button className="btn btn--confirm" onClick={() => setNewWords(true)} disabled={readOnly || !words.length}>
+            <BookCheck size={16} /> Новые слова ({words.length})
+          </button>
+          <button className="btn" onClick={() => setSaveVar({ value: fio, label: `ФИО: ${fio}`, kind: 'fio' })} disabled={!fio}>
             <Star size={16} /> ФИО в переменные
-          </button>
-          <button className={`btn ${isReviewed ? 'btn--done' : ''}`} onClick={onToggleReviewed} aria-pressed={isReviewed}>
-            {isReviewed ? <CheckCircle2 size={16} /> : <Circle size={16} />} {isReviewed ? 'Проверено' : 'Отметить проверенным'}
           </button>
           <label className="check small">
             <input type="checkbox" checked={onlyIssues} onChange={(e) => setOnlyIssues(e.target.checked)} />
@@ -119,7 +124,7 @@ export function PersonView({ model, headers, originals, row, reviewed, readOnly,
 
       <div className="groups">
         {groups.map((g) => {
-          const items = onlyIssues ? g.items.filter((f) => fieldStatus(f) !== 'ok') : g.items;
+          const items = onlyIssues ? g.items.filter((f) => fieldStatus(f) !== 'ok' && fieldStatus(f) !== 'accepted') : g.items;
           if (!items.length) return null;
           return (
             <section key={g.id} className="card group">
@@ -137,7 +142,7 @@ export function PersonView({ model, headers, originals, row, reviewed, readOnly,
                       current={values[f.col] ?? ''}
                       readOnly={readOnly}
                       onChange={(v) => onChangeCell(f.col, v)}
-                      onIgnore={(code) => onIgnore(issueKey(f.col, code))}
+                      onAccept={(on) => onAccept(f.col, on ? (values[f.col] ?? '') : null)}
                       onAction={onAction}
                       onCopy={() => navigator.clipboard?.writeText(values[f.col] ?? '').then(() => toast('Скопировано'))}
                       onSaveVar={() =>
@@ -154,12 +159,15 @@ export function PersonView({ model, headers, originals, row, reviewed, readOnly,
             </section>
           );
         })}
-        {onlyIssues && result.fields.every((f) => fieldStatus(f) === 'ok') && <div className="card empty">Замечаний нет 🎉</div>}
+        {onlyIssues && result.ready && <div className="card empty">Анкета соответствует шаблонам — замечаний нет.</div>}
       </div>
 
       <div className="row" style={{ justifyContent: 'space-between' }}>
         <button className="btn" onClick={() => onSelect(row - 1)} disabled={row === 0}>
           <ChevronLeft size={16} /> Предыдущий
+        </button>
+        <button className={`btn ${isReviewed ? 'btn--done' : ''}`} onClick={onToggleReviewed} aria-pressed={isReviewed}>
+          {isReviewed ? <Eye size={16} /> : <EyeOff size={16} />} {isReviewed ? 'Просмотрено' : 'Отметить просмотренной'}
         </button>
         <button
           className="btn btn--primary"
@@ -168,7 +176,7 @@ export function PersonView({ model, headers, originals, row, reviewed, readOnly,
             if (row < model.results.length - 1) onSelect(row + 1);
           }}
         >
-          {isReviewed ? 'Следующий' : 'Проверено, следующий'} <ChevronRight size={16} />
+          Следующий <ChevronRight size={16} />
         </button>
       </div>
 
@@ -183,6 +191,7 @@ export function PersonView({ model, headers, originals, row, reviewed, readOnly,
           }}
         />
       )}
+      {newWords && <NewWordsDialog items={words} onClose={() => setNewWords(false)} />}
       {saveVar && <SaveVarDialog initial={{ ...saveVar, source: `Проверка анкет: ${fileLabel}` }} onClose={() => setSaveVar(null)} />}
       {addPlace && (
         <AddPlaceDialog
@@ -190,7 +199,7 @@ export function PersonView({ model, headers, originals, row, reviewed, readOnly,
           initial={{ name: addPlace.name, type: addPlace.type, parentPath: addPlace.parentPath }}
           onClose={() => setAddPlace(null)}
           onSave={(entry, label) => {
-            placeDict.add(entry, { label, source: APP_ID });
+            void placeDict.add(entry, { label, source: APP_ID });
             toast(`Добавлено в справочник: ${label}`);
             setAddPlace(null);
           }}

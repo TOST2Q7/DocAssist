@@ -23,16 +23,31 @@ export interface GeoNode {
   aliases: string[];
   region?: Region;
   user?: boolean;
+  /** Подтверждённые почтовые индексы населённого пункта. */
+  postal: string[];
 }
 
-/** Запись пользовательского справочника адресов. */
+/** Запись пользовательского справочника адресов: новый узел дерева. */
 export interface UserGeoEntry {
+  op?: 'node';
   name: string;
   type: string;
   /** Путь родителя: ключи от корня, например ['country:россия', 'resp:хакасия', 'rn:аскизский']. */
   parentPath: string[];
   aliases?: string[];
 }
+
+/** Запись пользовательского справочника адресов: подтверждённый индекс населённого пункта. */
+export interface UserPostalEntry {
+  op: 'postal';
+  /** Путь узла (включая сам узел). */
+  path: string[];
+  index: string;
+}
+
+export type AddressDictValue = UserGeoEntry | UserPostalEntry;
+
+const isPostal = (v: AddressDictValue): v is UserPostalEntry => v.op === 'postal';
 
 const REGION_TYPE_TO_ADDR: Record<RegionType, string> = { resp: 'resp', kray: 'kray', obl: 'obl', ao: 'ao', aobl: 'aobl', gfz: 'g' };
 
@@ -56,7 +71,7 @@ export class Gazetteer {
   readonly root: GeoNode;
   private seq = 0;
 
-  constructor(user: UserGeoEntry[] = []) {
+  constructor(user: AddressDictValue[] = []) {
     this.root = this.add({ name: COUNTRY_NAME, type: 'country', level: 'country', parentId: null, aliases: ['РФ', 'Российская Федерация'] });
     for (const region of REGIONS) {
       const node = this.add({
@@ -69,11 +84,21 @@ export class Gazetteer {
       });
       for (const seed of REGION_SEEDS[region.name] ?? []) this.addSeed(seed, node.id);
     }
-    for (const entry of user) this.addUser(entry);
+    // Пользовательские узлы добавляем в несколько проходов: улица может быть записана раньше своего села.
+    let pending = user.filter((u): u is UserGeoEntry => !isPostal(u));
+    while (pending.length) {
+      const rest = pending.filter((entry) => !this.addUser(entry));
+      if (rest.length === pending.length) break;
+      pending = rest;
+    }
+    for (const p of user.filter(isPostal)) {
+      const node = this.byPath(p.path);
+      if (node && !node.postal.includes(p.index)) node.postal.push(p.index);
+    }
   }
 
-  private add(n: Omit<GeoNode, 'id' | 'key'> & { id?: string }): GeoNode {
-    const node: GeoNode = { ...n, id: n.id ?? `n${++this.seq}`, key: nodeKey(n.type, n.name) };
+  private add(n: Omit<GeoNode, 'id' | 'key' | 'postal'> & { id?: string; postal?: string[] }): GeoNode {
+    const node: GeoNode = { ...n, postal: n.postal ?? [], id: n.id ?? `n${++this.seq}`, key: nodeKey(n.type, n.name) };
     this.nodes.set(node.id, node);
     for (const name of [node.name, ...node.aliases]) {
       const k = normName(name);
@@ -152,6 +177,12 @@ export class Gazetteer {
   /** Найти узлы по названию (с учётом алиасов). */
   find(name: string): GeoNode[] {
     return this.byName.get(normName(name)) ?? [];
+  }
+
+  /** Найти узлы с таким названием внутри узла ancestor (на любой глубине). */
+  findUnder(name: string, ancestor: GeoNode | null): GeoNode[] {
+    const all = this.find(name);
+    return ancestor ? all.filter((n) => n.id !== ancestor.id && this.isAncestor(ancestor, n)) : all;
   }
 
   /** Есть ли такое слово в базе (для поиска «слипшихся» слов). */

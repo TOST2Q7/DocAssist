@@ -1,16 +1,16 @@
-import { CheckCircle2, Search } from 'lucide-react';
+import { Eye, Search } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import type { TableModel } from './hooks';
 import { Counters } from './Counters';
 
-type Filter = 'all' | 'errors' | 'clean' | 'reviewed' | 'todo';
+type Filter = 'all' | 'ready' | 'errors' | 'confirm' | 'todo';
 
 const FILTERS: { id: Filter; label: string }[] = [
   { id: 'all', label: 'Все' },
+  { id: 'ready', label: 'Готовы' },
   { id: 'errors', label: 'С ошибками' },
-  { id: 'clean', label: 'Без ошибок' },
-  { id: 'todo', label: 'Не проверены' },
-  { id: 'reviewed', label: 'Проверены' },
+  { id: 'confirm', label: 'Подтвердить' },
+  { id: 'todo', label: 'Не просмотрены' },
 ];
 
 export function PeopleList({ model, reviewed, onOpen }: { model: TableModel; reviewed: number[]; onOpen: (row: number) => void }) {
@@ -22,14 +22,13 @@ export function PeopleList({ model, reviewed, onOpen }: { model: TableModel; rev
     const q = query.trim().toLowerCase();
     return model.results.filter((r) => {
       if (q && !model.names[r.row].toLowerCase().includes(q)) return false;
-      const bad = r.counts.error > 0;
       switch (filter) {
+        case 'ready':
+          return r.ready;
         case 'errors':
-          return bad;
-        case 'clean':
-          return !bad;
-        case 'reviewed':
-          return reviewed.includes(r.row);
+          return r.counts.error + r.counts.glued > 0;
+        case 'confirm':
+          return r.counts.confirm > 0;
         case 'todo':
           return !reviewed.includes(r.row);
         default:
@@ -63,7 +62,7 @@ export function PeopleList({ model, reviewed, onOpen }: { model: TableModel; rev
               <div className="list__title">{model.names[r.row] || `Строка ${r.row + 1}`}</div>
               {squadCol >= 0 && model.values[r.row][squadCol] && <div className="list__sub">{model.values[r.row][squadCol]}</div>}
             </div>
-            {reviewed.includes(r.row) && <CheckCircle2 size={18} className="ic ic--ok" aria-label="Проверено" />}
+            {reviewed.includes(r.row) && <Eye size={18} className="faint" aria-label="Просмотрено" />}
             <Counters counts={r.counts} />
           </button>
         ))}
