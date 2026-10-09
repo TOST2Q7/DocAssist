@@ -21,6 +21,12 @@ describe('вставка таблицы из буфера', () => {
     expect(t.rows).toEqual([['Иванова', 'Анна', '655700, Респ. Хакасия,\nс. Аскиз']]);
   });
 
+  it('строка данных со словами «Фамилия», «Имя» — не заголовок', () => {
+    const t = toTable(parseClipboardTable('01.01.2025 00:00:00\tРеспублика Регион\tФамилия\tИмя\tОтчество\tКандидат\tОтделение\tМужской\t01.01.2000\t000-000-000 00\n'));
+    expect(t.hadHeader).toBe(false);
+    expect(t.rows).toHaveLength(1);
+  });
+
   it('одно значение — не таблица', () => {
     expect(isTableText('Абакан')).toBe(false);
     expect(isTableText('a\tb')).toBe(true);

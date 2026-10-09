@@ -63,7 +63,7 @@ export function ExportDialog({ model, headers, originals, session, fileName, she
         const label = (col: number, id: string | null) => (id && FIELD_BY_ID.get(id)?.label) || headers[col];
         values.push(
           r.fields
-            .flatMap((f) => f.issues.map((i) => `${label(f.col, f.fieldId)}: ${i.level === 'warn' ? 'подтвердить — ' : ''}${i.text}`))
+            .flatMap((f) => f.issues.map((i) => `${label(f.col, f.fieldId)}: ${i.level === 'warn' ? 'подтвердить — ' : ''}${i.text}${i.level === 'error' && f.example ? ` (пример: ${f.example})` : ''}`))
             .join('; '),
         );
       }

@@ -17,23 +17,23 @@ const DATE =
 
 export const PRESETS: FormatPreset[] = [
   { id: 'date', title: 'Дата ДД.ММ.ГГГГ', regex: `^(?:${DATE})$`, example: '01.01.2000', mask: '99.99.9999' },
-  { id: 'datetime', title: 'Дата и время', regex: `^(?:${DATE}) (?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d$`, example: '01.09.2025 12:00:00', mask: '99.99.9999 99:99:99' },
-  { id: 'phone', title: 'Телефон', regex: '^8\\(\\d{3}\\)\\d{3}-\\d{2}-\\d{2}$', example: '8(900)000-00-00', mask: '8(999)999-99-99' },
-  { id: 'email', title: 'Электронная почта', regex: '^[a-z0-9._-]+@[a-z0-9-]+(\\.[a-z0-9-]+)*\\.[a-z]{2,}$', example: 'ivanov@mail.ru' },
+  { id: 'datetime', title: 'Дата и время', regex: `^(?:${DATE}) (?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d$`, example: '01.01.2025 00:00:00', mask: '99.99.9999 99:99:99' },
+  { id: 'phone', title: 'Телефон', regex: '^8\\(\\d{3}\\)\\d{3}-\\d{2}-\\d{2}$', example: '8(000)000-00-00', mask: '8(999)999-99-99' },
+  { id: 'email', title: 'Электронная почта', regex: '^[a-z0-9._-]+@[a-z0-9-]+(\\.[a-z0-9-]+)*\\.[a-z]{2,}$', example: 'name@example.com' },
   { id: 'snils', title: 'СНИЛС', regex: '^\\d{3}-\\d{3}-\\d{3} \\d{2}$', example: '000-000-000 00', mask: '999-999-999 99' },
   { id: 'inn', title: 'ИНН (12 цифр)', regex: '^\\d{12}$', example: '000000000000', mask: '999999999999' },
   { id: 'series', title: 'Серия паспорта (4 цифры)', regex: '^\\d{4}$', example: '0000', mask: '9999' },
   { id: 'number', title: 'Номер паспорта (6 цифр)', regex: '^\\d{6}$', example: '000000', mask: '999999' },
-  { id: 'code', title: 'Код подразделения', regex: '^\\d{3}-\\d{3}$', example: '190-000', mask: '999-999' },
-  { id: 'card', title: 'Номер членского билета', regex: '^\\d{2}-\\d{2} \\d{3}$', example: '19-00 000', mask: '99-99 999' },
+  { id: 'code', title: 'Код подразделения', regex: '^\\d{3}-\\d{3}$', example: '000-000', mask: '999-999' },
+  { id: 'card', title: 'Номер членского билета', regex: '^\\d{2}-\\d{2} \\d{3}$', example: '00-00 000', mask: '99-99 999' },
   { id: 'vk', title: 'Ссылка ВКонтакте', regex: '^https://vk\\.(ru|com)/[A-Za-z0-9_.]+$', example: 'https://vk.com/username' },
-  { id: 'name', title: 'Фамилия, имя, отчество', regex: '^[А-ЯЁ][а-яё]+(-[А-ЯЁ][а-яё]+)*$', example: 'Иванов' },
-  { id: 'text', title: 'Текст без лишних пробелов', regex: '^\\S+( \\S+)*$', example: 'Хакасское РО' },
+  { id: 'name', title: 'Фамилия, имя, отчество', regex: '^[А-ЯЁ][а-яё]+(-[А-ЯЁ][а-яё]+)*$', example: 'Фамилия' },
+  { id: 'text', title: 'Текст без лишних пробелов', regex: '^\\S+( \\S+)*$', example: 'Текст' },
   { id: 'squad', title: 'Название в «ёлочках»', regex: '^«[^«»"“”„\']+»$', example: '«Название»' },
-  { id: 'quoted', title: 'Название с «ёлочками»', regex: '^(?=\\S)(?!.*\\s$)(?!.*\\s\\s)[^"“”„\']+$', example: 'ГБПОУ «Колледж»' },
-  { id: 'specialty', title: 'Код и название специальности', regex: '^\\d{2}\\.\\d{2}\\.\\d{2} [А-ЯЁ][^\\s]*( \\S+)*$', example: '09.02.07 Информационные системы и программирование' },
-  { id: 'course', title: 'Курс (1–6)', regex: '^[1-6]$', example: '2' },
-  { id: 'group', title: 'Группа (без пробелов)', regex: '^\\S+$', example: 'ИС-21' },
+  { id: 'quoted', title: 'Название с «ёлочками»', regex: '^(?=\\S)(?!.*\\s$)(?!.*\\s\\s)[^"“”„\']+$', example: 'ГБПОУ «Название»' },
+  { id: 'specialty', title: 'Код и название специальности', regex: '^\\d{2}\\.\\d{2}\\.\\d{2} [А-ЯЁ][^\\s]*( \\S+)*$', example: '00.00.00 Название специальности' },
+  { id: 'course', title: 'Курс (1–6)', regex: '^[1-6]$', example: '1' },
+  { id: 'group', title: 'Группа (без пробелов)', regex: '^\\S+$', example: 'ГР-01' },
   { id: 'gender', title: 'Пол', regex: '^(Мужской|Женский)$', example: 'Мужской' },
   { id: 'form', title: 'Форма обучения', regex: '^(очная|заочная|очно-заочная)$', example: 'очная' },
   { id: 'yesno', title: 'Да / Нет', regex: '^(Да|Нет)$', example: 'Да' },
@@ -50,7 +50,7 @@ export function compileRegex(re: string): { re: RegExp | null; error?: string } 
   }
 }
 
-/** Заполнить маску цифрами значения. «89000000000» + «8(999)999-99-99» → «8(900)000-00-00». */
+/** Заполнить маску цифрами значения. «80000000000» + «8(999)999-99-99» → «8(000)000-00-00». */
 export function fillMask(value: string, mask: string): string | null {
   const digits = value.replace(/\D/g, '');
   const slots = (mask.match(/9/g) ?? []).length;

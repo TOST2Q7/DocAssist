@@ -67,7 +67,7 @@ function TagChips({ tags, onChange }: { tags: KeyTag[]; onChange: (tags: KeyTag[
   );
 }
 
-export function TemplateEditor({ value, onChange, treeNames }: { value: CellTemplate; onChange: (t: CellTemplate) => void; treeNames: string[] }) {
+export function TemplateEditor({ value, onChange, treeNames, example }: { value: CellTemplate; onChange: (t: CellTemplate) => void; treeNames: string[]; example?: string }) {
   const [sample, setSample] = useState('');
   const t = value;
   const set = (patch: Partial<CellTemplate>) => onChange({ ...t, ...patch });
@@ -183,7 +183,14 @@ export function TemplateEditor({ value, onChange, treeNames }: { value: CellTemp
 
       <div className="field">
         <span className="field__label">Проверить на примере</span>
-        <input className="input" value={sample} onChange={(e) => setSample(e.target.value)} placeholder="Вставьте значение из таблицы" />
+        <div className="row row--nowrap">
+          <input className="input" value={sample} onChange={(e) => setSample(e.target.value)} placeholder="Вставьте значение из таблицы" />
+          {example && (
+            <button type="button" className="btn btn--sm nowrap" onClick={() => setSample(example)}>
+              Подставить пример
+            </button>
+          )}
+        </div>
         {parsed && (
           <div className="stack stack--s" style={{ marginTop: 6 }}>
             <div className="parts">

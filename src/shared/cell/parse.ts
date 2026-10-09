@@ -141,7 +141,7 @@ function tokenize(text: string, offset: number, dict: Dict, issues: CellIssue[],
       const gap = text.slice(last - offset, m.index).replace(dropCommas ? /,/g : /$^/, '');
       if (gap !== ' ' && gap !== '') issues.push({ text: gap.includes('\t') || /[^ ]/.test(gap) ? 'Лишний или нестандартный пробел' : 'Лишний пробел', span: [last, start], fixable: true });
     }
-    // Слиплось: «ул.Ленина», «д.1».
+    // Слиплось: «ул.Примерная», «д.1».
     const glued = /^([^\s.]{1,6}\.)(?=[\p{L}\p{N}])/u.exec(m[0]);
     if (glued && (dict.exact.has(glued[1]) || dict.variant.has(lowNoDot(glued[1])) || dict.foreign.has(lowNoDot(glued[1])))) {
       const cut = glued[1].length;
@@ -295,7 +295,7 @@ export function parseCell(value: string, t: CellTemplate): ParsedCell {
       continue;
     }
 
-    // Лишние приписки внутри значения: «р-н Аскизский р-н».
+    // Лишние приписки внутри значения: «р-н Районный р-н».
     const extra = raw.valueTokens.filter((tok) => dict.exact.has(tok.text) || dict.variant.has(lowNoDot(tok.text)));
     if (extra.length && raw.hit) {
       for (const tok of extra) issues.push({ text: `Лишнее слово «${tok.text}»`, span: [tok.start, tok.end], fixable: true });

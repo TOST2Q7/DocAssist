@@ -101,7 +101,7 @@ export const ABBREVIATIONS: Abbr[] = [
 
 /**
  * Полные слова, которые встречаются вместо сокращений (особенно в месте рождения):
- * «Республика Хакасия», «Аскизский район», «город Абакан».
+ * «Республика Регион», «Районный район», «город Примерск».
  */
 export const FULL_WORDS: Abbr[] = [
   { abbr: 'Республика', title: 'Республика', group: 'region' },
@@ -134,7 +134,7 @@ export function findAbbreviations(text: string): string[] {
     const w = lower(word).replace(/[,;]+$/, '');
     if (KNOWN.has(w) || KNOWN.has(w.replace(/\.$/, ''))) out.push(word);
     else {
-      // Слипшееся: «ул.Ленина», «д.18».
+      // Слипшееся: «ул.Примерная», «д.1».
       const m = /^([\p{L}/-]+\.)[\p{L}\p{N}]/u.exec(word);
       if (m && KNOWN.has(lower(m[1])) && lower(m[1]).length > 1) out.push(m[1]);
     }

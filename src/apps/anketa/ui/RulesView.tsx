@@ -5,7 +5,7 @@ import { ABBR_GROUPS, ABBREVIATIONS } from '@/shared/cell/abbr';
 import { compileRegex, PRESETS, suggestFix } from '@/shared/cell/format';
 import { parseOrder, registrationTemplate } from '@/shared/cell/template';
 import { Alert } from '@/ui/Alert';
-import { allTreeNames, defaultRules, KIND_LABELS, treeNameOf, type FieldKind, type FieldRule } from '../model/rules';
+import { allTreeNames, DEFAULT_EXAMPLES, defaultRules, KIND_LABELS, treeNameOf, type FieldKind, type FieldRule } from '../model/rules';
 import { useRules } from './hooks';
 import { TemplateEditor } from './TemplateEditor';
 
@@ -124,7 +124,7 @@ function FieldEditor({ id, initial, rules, custom, onSave, onReset, onClose }: {
             <label className="field">
               <span className="field__label">Маска для исправления</span>
               <input className="input mono" value={r.mask ?? ''} onChange={(e) => set({ mask: e.target.value || undefined })} placeholder="8(999)999-99-99" />
-              <span className="field__hint">9 — цифра. По маске предлагается исправление: «89000000000» → «8(900)000-00-00».</span>
+              <span className="field__hint">9 — цифра. По маске предлагается исправление: «80000000000» → «8(000)000-00-00».</span>
             </label>
             <div className="field">
               <span className="field__label">Проверка</span>
@@ -149,7 +149,14 @@ function FieldEditor({ id, initial, rules, custom, onSave, onReset, onClose }: {
         </label>
       )}
 
-      {r.kind === 'tree' && r.template && <TemplateEditor value={r.template} onChange={(template) => set({ template })} treeNames={treeNames} />}
+      {r.kind === 'tree' && (
+        <label className="field">
+          <span className="field__label">Пример правильного значения</span>
+          <input className="input" value={r.example} onChange={(e) => set({ example: e.target.value })} />
+        </label>
+      )}
+
+      {r.kind === 'tree' && r.template && <TemplateEditor value={r.template} onChange={(template) => set({ template })} treeNames={treeNames} example={r.example} />}
 
       <div className="field">
         <span className="field__label">Подтверждение</span>
@@ -185,6 +192,77 @@ function FieldEditor({ id, initial, rules, custom, onSave, onReset, onClose }: {
   );
 }
 
+/** Все примеры в одном месте: что показывать в подсказках «Пример: …». */
+function ExamplesEditor({ rules, readOnly, setField, resetField, defaults }: { rules: Record<string, FieldRule>; readOnly: boolean; setField: (id: string, r: FieldRule) => void; resetField: (id: string) => void; defaults: Record<string, FieldRule> }) {
+  const [draft, setDraft] = useState<Record<string, string>>({});
+  const value = (id: string) => draft[id] ?? rules[id].example;
+  const commit = (id: string) => {
+    const v = draft[id];
+    if (v === undefined || v === rules[id].example) return;
+    const next = { ...rules[id], example: v };
+    // Если правило после правки совпадает с умолчанием — храним как «не менялось».
+    if (JSON.stringify(next) === JSON.stringify(defaults[id])) resetField(id);
+    else setField(id, next);
+    setDraft((d) => {
+      const n = { ...d };
+      delete n[id];
+      return n;
+    });
+  };
+  const changed = PERSON_FIELDS.filter((f) => rules[f.id].example !== DEFAULT_EXAMPLES[f.id]);
+  const resetAll = () => {
+    if (!confirm('Вернуть все примеры по умолчанию?')) return;
+    for (const f of changed) {
+      const next = { ...rules[f.id], example: DEFAULT_EXAMPLES[f.id] };
+      if (JSON.stringify(next) === JSON.stringify(defaults[f.id])) resetField(f.id);
+      else setField(f.id, next);
+    }
+    setDraft({});
+  };
+  const check = (id: string, v: string) => {
+    const r = rules[id];
+    if (!v || r.kind === 'tree') return true;
+    const { re } = compileRegex(r.regex);
+    return !re || re.test(v);
+  };
+  return (
+    <details className="card card--flat examples">
+      <summary>
+        Примеры значений{changed.length ? ` · изменено: ${changed.length}` : ''} — показываются в подсказках «Пример: …»
+      </summary>
+      <p className="small muted">
+        По умолчанию — нейтральные заготовки, а не чьи-то данные. Перепишите, если нужно: например, свой формат названия отряда.
+        Пример, который не проходит правило столбца, подсвечен.
+      </p>
+      <div className="examples__grid">
+        {PERSON_FIELDS.map((f, i) => {
+          const v = value(f.id);
+          return (
+            <label key={f.id} className="examples__row">
+              <span className="small">
+                <span className="faint">{i + 1}.</span> {f.label}
+              </span>
+              <input
+                className={`input input--sm ${check(f.id, v) ? '' : 'input--error'}`}
+                value={v}
+                disabled={readOnly}
+                onChange={(e) => setDraft((d) => ({ ...d, [f.id]: e.target.value }))}
+                onBlur={() => commit(f.id)}
+                onKeyDown={(e) => e.key === 'Enter' && commit(f.id)}
+              />
+            </label>
+          );
+        })}
+      </div>
+      {changed.length > 0 && (
+        <button className="btn btn--sm btn--ghost" onClick={resetAll} disabled={readOnly} style={{ marginTop: 8 }}>
+          <RotateCcw size={14} /> Вернуть примеры по умолчанию
+        </button>
+      )}
+    </details>
+  );
+}
+
 export function RulesView() {
   const { rules, loaded, readOnly, error, setField, resetField, isCustom } = useRules();
   const [open, setOpen] = useState<string | null>(null);
@@ -201,6 +279,8 @@ export function RulesView() {
         конструктором. База сначала пустая — значения попадают в неё, когда вы их подтверждаете. Индивидуальное (паспорт, СНИЛС,
         телефон…) всегда подтверждается галочкой у каждого человека.
       </p>
+
+      <ExamplesEditor rules={rules} readOnly={readOnly} setField={setField} resetField={resetField} defaults={defaults} />
 
       <div className="rules-list">
         {PERSON_FIELDS.map((f, i) => {

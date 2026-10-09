@@ -18,13 +18,13 @@ export interface Issue {
 export interface BaseAddition {
   tree: string;
   path: Step[];
-  /** «Респ. Хакасия → 655700 → с. Аскиз». */
+  /** «Респ. Регион → 000000 → с. Примерное». */
   label: string;
   /** Сколько первых частей пути уже есть в базе. */
   known: number;
 }
 
-/** Часть ячейки-древа для показа: «Регион: Респ. Хакасия — есть в базе». */
+/** Часть ячейки-древа для показа: «Регион: Респ. Регион — есть в базе». */
 export interface PartView {
   title: string;
   text: string;
@@ -48,6 +48,8 @@ export interface FieldResult {
   confirmed: boolean;
   /** Части ячейки-древа. */
   parts?: PartView[];
+  /** Пример правильного значения (из правил) — показывается, когда есть ошибка. */
+  example?: string;
 }
 
 export interface Counts {

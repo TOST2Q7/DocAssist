@@ -58,15 +58,57 @@ const tree = (template: CellTemplate, extra: Partial<FieldRule> = {}): FieldRule
   ...extra,
 });
 
+/**
+ * Примеры по умолчанию — нейтральные заготовки, а не чьи-то данные. Показываются в подсказках «Пример: …»,
+ * в правилах и в конструкторе; каждый можно переписать («Шаблоны и правила» → «Примеры значений»).
+ */
+export const DEFAULT_EXAMPLES: Record<string, string> = {
+  'meta.timestamp': '01.01.2025 00:00:00',
+  'person.region': 'Республика Регион',
+  'person.lastName': 'Фамилия',
+  'person.firstName': 'Имя',
+  'person.middleName': 'Отчество',
+  'rso.position': 'Кандидат',
+  'rso.branch': 'Региональное отделение',
+  'person.gender': 'Мужской',
+  'person.birthDate': '01.01.2000',
+  'person.snils': '000-000-000 00',
+  'person.inn': '000000000000',
+  'person.phone': '8(000)000-00-00',
+  'person.email': 'name@example.com',
+  'passport.series': '0000',
+  'passport.number': '000000',
+  'person.birthPlace': 'с. Примерное Районный р-н Республика Регион Россия',
+  'passport.issuedBy': 'Название органа',
+  'passport.issueDate': '01.01.2014',
+  'passport.divisionCode': '000-000',
+  'person.regAddress': '000000, Респ. Регион, р-н Районный, с. Примерное, ул. Примерная, д. 1',
+  'person.factAddress': 'Респ. Регион, г. Примерск, ул. Примерная, д. 1, кв. 1',
+  'rso.joinDate': '01.01.2025',
+  'rso.leaveDate': '01.01.2026',
+  'rso.cardNumber': '00-00 000',
+  'rso.direction': 'студенческие сервисные отряды',
+  'rso.squad': '«Название»',
+  'rso.experience': 'Не имею',
+  'edu.institution': 'ГБПОУ «Название»',
+  'edu.specialty': '00.00.00 Название специальности',
+  'edu.course': '1',
+  'edu.group': 'ГР-01',
+  'edu.form': 'очная',
+  'person.vk': 'https://vk.com/username',
+  'rso.wasMember': 'Нет',
+  'rso.checkMark': '01.01.2025',
+};
+
 /** Правила по умолчанию — для каждого из 35 столбцов анкеты. */
 export function defaultRules(): Record<string, FieldRule> {
-  return {
+  const rules: Record<string, FieldRule> = {
     'meta.timestamp': fmt('datetime'),
-    'person.region': list('text', { example: 'Республика Хакасия' }),
+    'person.region': list('text'),
     'person.lastName': fmt('name', { confirm: true, unique: true, uniqueWith: ['person.firstName', 'person.middleName'] }),
-    'person.firstName': fmt('name', { confirm: true, example: 'Иван' }),
-    'person.middleName': fmt('name', { confirm: true, required: false, example: 'Иванович' }),
-    'rso.position': list('text', { example: 'Кандидат' }),
+    'person.firstName': fmt('name', { confirm: true }),
+    'person.middleName': fmt('name', { confirm: true, required: false }),
+    'rso.position': list('text'),
     'rso.branch': list('text'),
     'person.gender': fmt('gender'),
     'person.birthDate': fmt('date', { confirm: true }),
@@ -77,7 +119,7 @@ export function defaultRules(): Record<string, FieldRule> {
     'passport.series': fmt('series', { confirm: true }),
     'passport.number': fmt('number', { confirm: true, unique: true, uniqueWith: ['passport.series'] }),
     'person.birthPlace': tree(birthplaceTemplate()),
-    'passport.issuedBy': list('text', { example: 'МВД по Республике Хакасия', within: 'passport.divisionCode' }),
+    'passport.issuedBy': list('text', { within: 'passport.divisionCode' }),
     'passport.issueDate': fmt('date', { confirm: true }),
     'passport.divisionCode': list('code'),
     'person.regAddress': tree(registrationTemplate()),
@@ -85,9 +127,9 @@ export function defaultRules(): Record<string, FieldRule> {
     'rso.joinDate': fmt('date'),
     'rso.leaveDate': fmt('date', { required: false }),
     'rso.cardNumber': fmt('card', { confirm: true, required: false }),
-    'rso.direction': list('text', { example: 'студенческие сервисные отряды' }),
+    'rso.direction': list('text'),
     'rso.squad': list('squad'),
-    'rso.experience': list('text', { example: 'Не имею' }),
+    'rso.experience': list('text'),
     'edu.institution': list('quoted'),
     'edu.specialty': list('specialty'),
     'edu.course': fmt('course', { confirm: true }),
@@ -97,6 +139,8 @@ export function defaultRules(): Record<string, FieldRule> {
     'rso.wasMember': fmt('yesno', { required: false }),
     'rso.checkMark': fmt('date', { required: false }),
   };
+  for (const [id, example] of Object.entries(DEFAULT_EXAMPLES)) if (rules[id]) rules[id].example = example;
+  return rules;
 }
 
 /** Столбец, который не удалось сопоставить с анкетой: только без лишних пробелов. */

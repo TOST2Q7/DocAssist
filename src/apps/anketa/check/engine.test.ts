@@ -2,7 +2,9 @@ import { describe, expect, it } from 'vitest';
 import { BaseTree, type BaseEntry, type Step } from '@/core/base/tree';
 import type { PersonRecord } from '@/core/people/people';
 import { PERSON_FIELDS } from '@/core/schema/fields';
-import { resolveRules } from '../model/rules';
+import { DEFAULT_EXAMPLES, resolveRules } from '../model/rules';
+import { compileRegex } from '@/shared/cell/format';
+import { parseCell } from '@/shared/cell/parse';
 import { applyUniqueness, checkPerson, matchWithPeople, type CheckContext } from './engine';
 
 const HEADERS = PERSON_FIELDS.map((f) => f.label);
@@ -166,5 +168,24 @@ describe('уникальность и база людей', () => {
       { col: col('person.phone'), base: '8(900)111-11-11' },
     ]);
     expect(matchWithPeople(other, COLUMNS, [rec])).toBeNull();
+  });
+});
+
+describe('примеры по умолчанию', () => {
+  const rules = resolveRules(undefined);
+  it('есть у каждого столбца и проходят его правило', () => {
+    for (const f of PERSON_FIELDS) {
+      const r = rules[f.id];
+      expect(r.example, f.label).toBe(DEFAULT_EXAMPLES[f.id]);
+      expect(r.example, f.label).not.toBe('');
+      if (r.kind === 'tree') expect(parseCell(r.example, r.template!).issues, f.label).toEqual([]);
+      else expect(compileRegex(r.regex).re!.test(r.example), f.label).toBe(true);
+    }
+  });
+  it('показываются при ошибке', () => {
+    const v = [...SAMPLE];
+    v[col('person.phone')] = '123';
+    const f = checkPerson(0, v, COLUMNS, ctx()).fields[col('person.phone')];
+    expect(f).toMatchObject({ status: 'error', example: '8(000)000-00-00' });
   });
 });

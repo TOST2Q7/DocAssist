@@ -706,3 +706,26 @@
   white-space: pre;
   overflow-x: auto;
 }
+.frow__example {
+  word-break: break-word;
+}
+.examples summary {
+  cursor: pointer;
+}
+.examples__grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 360px), 1fr));
+  gap: 6px 16px;
+}
+.examples__row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.2fr);
+  align-items: center;
+  gap: 8px;
+}
+@media (max-width: 600px) {
+  .examples__row {
+    grid-template-columns: 1fr;
+    gap: 2px;
+  }
+}

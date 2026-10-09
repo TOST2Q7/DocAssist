@@ -112,6 +112,8 @@ export function matchColumns(headers: string[], fields: FieldDef[] = PERSON_FIEL
  * (например, строки вставлены из буфера), и столбцы понимаются по порядку формы.
  */
 export function looksLikeHeader(row: string[]): boolean {
-  const matched = matchColumns(row).filter(Boolean).length;
-  return matched >= Math.min(3, Math.max(1, row.filter((c) => c.trim()).length));
+  const filled = row.filter((c) => c.trim()).length;
+  if (!filled) return false;
+  // Заголовок — когда с названиями формы совпадает хотя бы половина заполненных ячеек.
+  return matchColumns(row).filter(Boolean).length * 2 >= filled;
 }

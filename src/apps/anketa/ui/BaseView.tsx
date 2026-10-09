@@ -279,8 +279,8 @@ function BaseTrees() {
     <div className="stack">
       <div className="row">
         <p className="muted small spacer" style={{ margin: 0 }}>
-          Древа «ключ:значение» для проверки анкет. Значение есть в базе, только если оно внутри своего родителя: «Абакан» внутри
-          «Респ. Хакасия».
+          Древа «ключ:значение» для проверки анкет. Значение есть в базе, только если оно внутри своего родителя: «Примерск» внутри
+          «Респ. Регион».
         </p>
         <select className="select" style={{ width: 'auto' }} value={only} onChange={(e) => setOnly(e.target.value)} aria-label="Какое древо показать">
           <option value="">Все древа ({names.length})</option>

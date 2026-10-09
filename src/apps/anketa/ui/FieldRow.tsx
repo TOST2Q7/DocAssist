@@ -129,6 +129,12 @@ export function FieldRow({ num, field, def, header, original, current, readOnly,
         </ul>
       )}
 
+      {field.example && status === 'error' && (
+        <div className="small muted frow__example">
+          Пример: <span className="mono">{field.example}</span>
+        </div>
+      )}
+
       {!blocking && (base || person) && (
         <div className="confirm-row">
           {base ? (

@@ -125,7 +125,10 @@ export function checkField(fieldId: string | null, col: number, value: string, r
   const r: FieldResult = { col, fieldId, value, status: 'ok', issues: [], confirmed: false };
 
   if (value === '') {
-    if (rule.required) r.issues.push({ level: 'error', text: 'Пусто — поле обязательно' });
+    if (rule.required) {
+      r.issues.push({ level: 'error', text: 'Пусто — поле обязательно' });
+      if (rule.example) r.example = rule.example;
+    }
     return finish(r);
   }
   if (value.trim() === '') {
@@ -146,13 +149,14 @@ export function checkField(fieldId: string | null, col: number, value: string, r
     if (error) r.issues.push({ level: 'error', text: `В правилах ошибка в формате (regex): ${error}` });
     else if (re && !re.test(value)) {
       const fix = suggestFix(value, re, rule.mask);
-      r.issues.push({ level: 'error', text: `Не по формату${rule.example ? `. Пример: ${rule.example}` : ''}`, span: [0, value.length], fix: fix ?? undefined });
+      r.issues.push({ level: 'error', text: 'Не по формату', span: [0, value.length], fix: fix ?? undefined });
       if (fix) r.fix = fix;
     } else if (rule.kind === 'list' && fieldId) {
       checkList(r, rule, fieldId, row, ctx);
     }
   }
 
+  if (rule.example && r.issues.some((i) => i.level === 'error' && !i.confirmable)) r.example = rule.example;
   if (person && !r.confirmed && !r.issues.some((i) => i.level === 'error' && !i.confirmable)) {
     r.issues.push({ level: 'warn', person: true, text: rule.unique ? 'Уникальное значение — проверьте и поставьте галочку' : 'Индивидуальное значение — проверьте и поставьте галочку' });
   }
