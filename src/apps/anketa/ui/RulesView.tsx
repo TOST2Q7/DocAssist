@@ -2,7 +2,9 @@ import { ChevronDown, ChevronRight, RotateCcw } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import { FIELD_BY_ID, PERSON_FIELDS } from '@/core/schema/fields';
 import { ABBR_GROUPS, ABBREVIATIONS } from '@/shared/cell/abbr';
-import { compileRegex, PRESETS, suggestFix } from '@/shared/cell/format';
+import { blocksMask, blocksToRegex, PRESET_BLOCKS } from '@/shared/cell/blocks';
+import { compileRegex, lintRegex, PRESETS, suggestFix } from '@/shared/cell/format';
+import { BlocksEditor } from './BlocksEditor';
 import { parseOrder, registrationTemplate } from '@/shared/cell/template';
 import { Alert } from '@/ui/Alert';
 import { allTreeNames, DEFAULT_EXAMPLES, defaultRules, KIND_LABELS, treeNameOf, type FieldKind, type FieldRule } from '../model/rules';
@@ -100,7 +102,7 @@ function FieldEditor({ id, initial, rules, custom, onSave, onReset, onClose }: {
                 value={preset?.id ?? ''}
                 onChange={(e) => {
                   const p = PRESETS.find((x) => x.id === e.target.value);
-                  if (p) set({ regex: p.regex, example: p.example, mask: p.mask });
+                  if (p) set({ regex: p.regex, example: p.example, mask: p.mask, blocks: PRESET_BLOCKS[p.id] ? structuredClone(PRESET_BLOCKS[p.id]) : undefined });
                 }}
               >
                 <option value="">— свой —</option>
@@ -117,11 +119,35 @@ function FieldEditor({ id, initial, rules, custom, onSave, onReset, onClose }: {
               <input className="input" value={r.example} onChange={(e) => set({ example: e.target.value })} />
             </label>
           </div>
+          <div className="field">
+            <span className="field__label">Конструктор формата (блоки)</span>
+            {r.blocks ? (
+              <BlocksEditor blocks={r.blocks} onChange={(blocks) => set({ blocks, regex: blocksToRegex(blocks), mask: blocksMask(blocks) })} />
+            ) : (
+              <div className="row small">
+                <span className="muted">Формат задан regex вручную.</span>
+                <button type="button" className="btn btn--sm" onClick={() => set({ blocks: [] })}>
+                  Собрать из блоков
+                </button>
+              </div>
+            )}
+          </div>
           <label className="field">
             <span className="field__label">Формат (regex)</span>
-            <input className={`input mono ${error ? 'input--error' : ''}`} value={r.regex} onChange={(e) => set({ regex: e.target.value })} placeholder="пусто — любое значение" />
-            {error ? <span className="field__error">{error}</span> : <span className="field__hint">Регулярное выражение JavaScript. ^ и $ — начало и конец значения.</span>}
+            <input className={`input mono ${error ? 'input--error' : ''}`} value={r.regex} onChange={(e) => set({ regex: e.target.value, blocks: undefined })} placeholder="пусто — любое значение" />
+            {error ? (
+              <span className="field__error">{error}</span>
+            ) : (
+              <span className="field__hint">{r.blocks ? 'Собирается из блоков. Если править вручную — блоки отключатся.' : 'Регулярное выражение JavaScript. ^ и $ — начало и конец значения.'}</span>
+            )}
+            {!error &&
+              lintRegex(r.regex).map((w) => (
+                <span key={w} className="field__warn">
+                  {w}
+                </span>
+              ))}
           </label>
+
           <div className="grid-2">
             <label className="field">
               <span className="field__label">Маска для исправления</span>

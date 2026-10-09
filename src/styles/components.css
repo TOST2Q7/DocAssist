@@ -1056,3 +1056,7 @@ a.chip:hover {
   align-items: center;
   gap: 4px;
 }
+.field__warn {
+  font-size: 0.8rem;
+  color: var(--warning);
+}

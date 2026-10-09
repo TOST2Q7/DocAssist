@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { BaseTree, removeNodeFromEntries, type BaseEntry, type Step } from '@/core/base/tree';
 import { findAbbreviations } from './abbr';
-import { compileRegex, fillMask, PRESET_BY_ID, suggestFix } from './format';
+import { compileRegex, describeFormat, fillMask, lintRegex, parseRangeRegex, PRESET_BY_ID, rangeRegex, suggestFix } from './format';
 import { parseCell } from './parse';
 import { birthplaceTemplate, parseOrder, registrationTemplate, residenceTemplate, type CellTemplate } from './template';
 import { walk, type Level } from './walk';
@@ -209,6 +209,18 @@ describe('формат и исправления', () => {
     expect(suggestFix('2 курс', re('course'))).toBe('2');
     expect(suggestFix(' 2 ', re('course'))).toBe('2');
     expect(suggestFix('1234 5678 9012', re('inn'))).toBe('123456789012');
+  });
+  it('число от … до …: [1-11] — ловушка, правильный диапазон строится сам', () => {
+    expect(new RegExp('^[1-11]$').test('6')).toBe(false);
+    expect(lintRegex('^[1-11]$')[0]).toMatch(/одна цифра.*до 11/);
+    const re = rangeRegex(1, 11);
+    expect(re).toBe('^(1|2|3|4|5|6|7|8|9|10|11)$');
+    expect(['1', '6', '10', '11'].every((v) => new RegExp(re).test(v))).toBe(true);
+    expect(['0', '12', '1 ', '01'].some((v) => new RegExp(re).test(v))).toBe(false);
+    expect(parseRangeRegex(re)).toEqual([1, 11]);
+    expect(describeFormat(re)).toBe('число от 1 до 11');
+    expect(lintRegex(re)).toEqual([]);
+    expect(lintRegex('[0-9]+')).toHaveLength(2);
   });
   it('кавычки', () => {
     expect(suggestFix('ГБПОУ "Колледж»', re('quoted'))).toBe('ГБПОУ «Колледж»');

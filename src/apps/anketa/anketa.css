@@ -729,3 +729,61 @@
     gap: 2px;
   }
 }
+/* ---------- Конструктор формата (блоки) ---------- */
+.blk {
+  padding: 8px 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.blk__head {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.blk__ctrl {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  margin-left: auto;
+}
+.blk__num {
+  min-width: 20px;
+  height: 20px;
+  border-radius: 999px;
+  background: var(--brand-soft);
+  color: var(--brand);
+  font-size: 0.75rem;
+  font-weight: 700;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.blk__body,
+.blk__chars,
+.blk__count {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+.blk__count .input {
+  width: 64px;
+}
+.blk__text {
+  max-width: 280px;
+}
+.blk__extra {
+  width: 110px;
+}
+.blk__options {
+  width: 100%;
+  max-width: 420px;
+}
+.blk__result {
+  padding: 8px 10px;
+  border-radius: var(--radius-s);
+  background: var(--surface-2);
+  word-break: break-all;
+}

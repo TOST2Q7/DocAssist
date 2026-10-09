@@ -1,3 +1,4 @@
+import { describeBlocks, type Block } from './blocks';
 /*
  * Проверка формата обычным regex и простые исправления.
  * Исправление предлагается, только если исправленное значение проходит тот же regex.
@@ -32,7 +33,7 @@ export const PRESETS: FormatPreset[] = [
   { id: 'squad', title: 'Название в «ёлочках»', regex: '^«[^«»"“”„\']+»$', example: '«Название»' },
   { id: 'quoted', title: 'Название с «ёлочками»', regex: '^(?=\\S)(?!.*\\s$)(?!.*\\s\\s)[^"“”„\']+$', example: 'ГБПОУ «Название»' },
   { id: 'specialty', title: 'Код и название специальности', regex: '^\\d{2}\\.\\d{2}\\.\\d{2} [А-ЯЁ][^\\s]*( \\S+)*$', example: '00.00.00 Название специальности' },
-  { id: 'course', title: 'Курс (1–6)', regex: '^[1-6]$', example: '1' },
+  { id: 'course', title: 'Курс (1–6)', regex: '^(1|2|3|4|5|6)$', example: '1' },
   { id: 'group', title: 'Группа (без пробелов)', regex: '^\\S+$', example: 'ГР-01' },
   { id: 'gender', title: 'Пол', regex: '^(Мужской|Женский)$', example: 'Мужской' },
   { id: 'form', title: 'Форма обучения', regex: '^(очная|заочная|очно-заочная)$', example: 'очная' },
@@ -41,10 +42,49 @@ export const PRESETS: FormatPreset[] = [
 
 export const PRESET_BY_ID = new Map(PRESETS.map((p) => [p.id, p]));
 
+/** Regex для целого числа от min до max: «1–11» → ^(1|2|…|11)$. Просто и читаемо, без хитростей. */
+export function rangeRegex(min: number, max: number): string {
+  const lo = Math.min(min, max);
+  const hi = Math.max(min, max);
+  const vals: string[] = [];
+  for (let i = lo; i <= hi; i++) vals.push(String(i));
+  return `^(${vals.join('|')})$`;
+}
+
+/** Если regex — это «число от … до …», вернуть границы (для конструктора в правилах). */
+export function parseRangeRegex(re: string): [number, number] | null {
+  const m = /^\^\(((?:\d+\|)*\d+)\)\$$/.exec(re);
+  if (!m) return null;
+  const nums = m[1].split('|').map(Number);
+  for (let i = 1; i < nums.length; i++) if (nums[i] !== nums[i - 1] + 1) return null;
+  return [nums[0], nums[nums.length - 1]];
+}
+
+/** Частые ловушки в regex — предупреждения в правилах. */
+export function lintRegex(re: string): string[] {
+  const out: string[] = [];
+  if (!re) return out;
+  const m = /\[[^\]]*?(\d)-(\d)(\d+)[^\]]*\]/.exec(re);
+  if (m) {
+    out.push(
+      `В квадратных скобках каждый символ — одна цифра: «${m[0]}» означает одну цифру, а не числа до ${m[2]}${m[3]}. Для чисел используйте блок «Число от … до …» в конструкторе формата.`,
+    );
+  }
+  if (!re.startsWith('^')) out.push('Нет «^» в начале — перед подходящей частью может стоять что угодно.');
+  if (!re.endsWith('$')) out.push('Нет «$» в конце — после подходящей части может стоять что угодно.');
+  return out;
+}
+
 /** Что ожидается — для сообщения об ошибке: название готового формата или сам regex. */
-export function describeFormat(regex: string): string {
+export function describeFormat(regex: string, blocks?: Block[]): string {
   const p = PRESETS.find((x) => x.regex === regex);
   if (p) return p.title.toLowerCase();
+  if (blocks?.length) {
+    const d = describeBlocks(blocks);
+    if (d.length <= 120) return d;
+  }
+  const range = parseRangeRegex(regex);
+  if (range) return `число от ${range[0]} до ${range[1]}`;
   return regex.length <= 60 ? `формат ${regex}` : 'свой формат';
 }
 

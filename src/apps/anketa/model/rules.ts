@@ -1,5 +1,6 @@
 import { FIELD_BY_ID, PERSON_FIELDS } from '@/core/schema/fields';
 import { defineDocType } from '@/core/schema/docType';
+import { PRESET_BLOCKS, type Block } from '@/shared/cell/blocks';
 import { PRESET_BY_ID } from '@/shared/cell/format';
 import { birthplaceTemplate, registrationTemplate, residenceTemplate, type CellTemplate } from '@/shared/cell/template';
 
@@ -36,6 +37,8 @@ export interface FieldRule {
   within?: string;
   /** Конструктор ячейки (для древа). */
   template?: CellTemplate;
+  /** Формат из блоков (мини-язык); regex собирается из них. Нет блоков — regex задан вручную. */
+  blocks?: Block[];
 }
 
 export interface AnketaRules {
@@ -44,7 +47,18 @@ export interface AnketaRules {
 
 const fmt = (preset: string, extra: Partial<FieldRule> = {}): FieldRule => {
   const p = PRESET_BY_ID.get(preset)!;
-  return { kind: 'text', regex: p.regex, example: p.example, ...(p.mask ? { mask: p.mask } : {}), required: true, confirm: false, unique: false, ...extra };
+  const blocks = PRESET_BLOCKS[preset];
+  return {
+    kind: 'text',
+    regex: p.regex,
+    example: p.example,
+    ...(p.mask ? { mask: p.mask } : {}),
+    ...(blocks ? { blocks: structuredClone(blocks) } : {}),
+    required: true,
+    confirm: false,
+    unique: false,
+    ...extra,
+  };
 };
 const list = (preset: string, extra: Partial<FieldRule> = {}): FieldRule => ({ ...fmt(preset), kind: 'list', ...extra });
 const tree = (template: CellTemplate, extra: Partial<FieldRule> = {}): FieldRule => ({
@@ -162,7 +176,13 @@ export const rulesDocType = defineDocType<AnketaRules>({
 export function resolveRules(stored: AnketaRules | undefined): Record<string, FieldRule> {
   const defaults = defaultRules();
   const out: Record<string, FieldRule> = {};
-  for (const f of PERSON_FIELDS) out[f.id] = { ...defaults[f.id], ...stored?.fields?.[f.id] };
+  for (const f of PERSON_FIELDS) {
+    const own = stored?.fields?.[f.id];
+    const merged: FieldRule = { ...defaults[f.id], ...own };
+    // Сохранённое правило без блоков — regex задан вручную: блоки по умолчанию к нему не относятся.
+    if (own && !('blocks' in own)) delete merged.blocks;
+    out[f.id] = merged;
+  }
   return out;
 }
 
