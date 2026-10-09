@@ -16,6 +16,12 @@
   Яндекс Браузере. Без установки и без интернета.
 - **DocAssist-web-x.y.z.zip** — веб-версия для размещения на сервере (в любой папке), с офлайн-режимом и установкой как приложение.
 
+## Готовый HTML в ветке `tests`
+
+В ветке `tests` в корне лежит **[DocAssist.html](DocAssist.html)** — всё приложение одним файлом, собранное из текущего
+кода ветки. Скачать (на GitHub: файл → «Download raw file») и открыть двойным кликом в Chrome, Edge или Яндекс Браузере.
+Обновляется вместе с каждым изменением: `npm run build:html` и коммит файла.
+
 ## Быстрый старт
 
 ```bash
@@ -24,6 +30,7 @@ npm run dev        # разработка: http://localhost:5173
 npm test           # тесты (vitest)
 npm run build      # сборка сайта в dist/
 npm run build:single  # всё приложение в одном HTML: dist-single/index.html
+npm run build:html    # то же + копия в DocAssist.html (готовый файл в ветке tests)
 npm run preview    # просмотр собранной версии
 ```
 
