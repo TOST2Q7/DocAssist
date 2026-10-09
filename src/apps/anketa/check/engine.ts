@@ -1,7 +1,7 @@
 import { BaseTree, chainText, stepText, type Step } from '@/core/base/tree';
 import { FIO_FIELDS, fioKey, fioText, type PersonRecord } from '@/core/people/people';
 import { FIELD_BY_ID } from '@/core/schema/fields';
-import { compileRegex, suggestFix } from '@/shared/cell/format';
+import { compileRegex, describeFormat, suggestFix } from '@/shared/cell/format';
 import { parseCell } from '@/shared/cell/parse';
 import { parseOrder } from '@/shared/cell/template';
 import { walk, type Level as WalkLevel } from '@/shared/cell/walk';
@@ -149,7 +149,8 @@ export function checkField(fieldId: string | null, col: number, value: string, r
     if (error) r.issues.push({ level: 'error', text: `В правилах ошибка в формате (regex): ${error}` });
     else if (re && !re.test(value)) {
       const fix = suggestFix(value, re, rule.mask);
-      r.issues.push({ level: 'error', text: 'Не по формату', span: [0, value.length], fix: fix ?? undefined });
+      const spaces = value !== value.trim() || /\s{2}/.test(value) ? ' — есть лишние пробелы' : '';
+      r.issues.push({ level: 'error', text: `Не по формату: ${describeFormat(rule.regex)}${spaces}`, span: [0, value.length], fix: fix ?? undefined });
       if (fix) r.fix = fix;
     } else if (rule.kind === 'list' && fieldId) {
       checkList(r, rule, fieldId, row, ctx);

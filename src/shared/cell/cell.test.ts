@@ -205,6 +205,11 @@ describe('формат и исправления', () => {
     expect(suggestFix('"Название"', re('squad'))).toBe('«Название»');
     expect(suggestFix('Название', re('squad'))).toBe('«Название»');
   });
+  it('лишнее вокруг цифр убирается: «2 курс» → «2», «1234 5678 9012» → ИНН', () => {
+    expect(suggestFix('2 курс', re('course'))).toBe('2');
+    expect(suggestFix(' 2 ', re('course'))).toBe('2');
+    expect(suggestFix('1234 5678 9012', re('inn'))).toBe('123456789012');
+  });
   it('кавычки', () => {
     expect(suggestFix('ГБПОУ "Колледж»', re('quoted'))).toBe('ГБПОУ «Колледж»');
   });

@@ -1,8 +1,11 @@
 import { Copy, Download, Pencil, Plus, Trash2, Upload } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import { markSeen } from '@/core/registry/badges';
+import { FIELD_BY_ID } from '@/core/schema/fields';
+import { useSuggestions } from '@/core/suggest/suggest';
 import { variablesDocType, useVariables } from '@/core/variables/variables';
 import { VAR_KINDS, type Variable, type VarKind } from '@/core/variables/types';
+import { plural } from '@/core/util/format';
 import { upgrade, wrap } from '@/core/schema/docType';
 import { downloadBytes, pickFiles } from '@/core/util/download';
 import { formatDateTime, todayStamp } from '@/core/util/format';
@@ -128,6 +131,77 @@ function VariablesView() {
   );
 }
 
+/** Словарь подсказок: что вы вводили в поля — подсказывается при наборе в таких же полях. */
+function SuggestDictionary() {
+  const dict = useSuggestions();
+  const toast = useToast();
+  const [query, setQuery] = useState('');
+  const groups = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    const m = new Map<string, typeof dict.items>();
+    for (const it of dict.items) {
+      if (q && !it.value.toLowerCase().includes(q)) continue;
+      m.set(it.key, [...(m.get(it.key) ?? []), it]);
+    }
+    for (const list of m.values()) list.sort((a, b) => b.count - a.count || b.last.localeCompare(a.last));
+    return [...m.entries()].sort((a, b) => b[1].length - a[1].length);
+  }, [dict.items, query]);
+  const title = (key: string) => FIELD_BY_ID.get(key)?.label ?? VAR_KINDS[key as VarKind]?.label ?? key;
+
+  return (
+    <section className="stack">
+      <div className="section-title">
+        <h2>Словарь подсказок</h2>
+        <span className="muted small">
+          {dict.items.length} {plural(dict.items.length, ['значение', 'значения', 'значений'])}
+        </span>
+      </div>
+      <p className="muted small" style={{ margin: 0 }}>
+        То, что вы вводите в поля, запоминается и подсказывается при наборе в таких же полях — в любом приложении: имя — в полях
+        имени, адрес — в полях адреса. ↓ — выбрать, Tab — подставить, Esc — скрыть. Хранится только в рабочей папке и никуда не
+        отправляется.
+      </p>
+      <label className="check">
+        <input type="checkbox" checked={dict.enabled} disabled={dict.readOnly} onChange={(e) => dict.setEnabled(e.target.checked)} /> Запоминать вводимое и
+        подсказывать
+      </label>
+      {dict.items.length > 0 && (
+        <div className="row">
+          <input className="input" style={{ flex: '1 1 220px' }} placeholder="Поиск в словаре" value={query} onChange={(e) => setQuery(e.target.value)} aria-label="Поиск в словаре" />
+          <button
+            className="btn btn--ghost"
+            disabled={dict.readOnly}
+            onClick={() => {
+              if (confirm('Очистить словарь подсказок?')) {
+                dict.clear();
+                toast('Словарь очищен');
+              }
+            }}
+          >
+            <Trash2 size={16} /> Очистить
+          </button>
+        </div>
+      )}
+      {groups.map(([key, list]) => (
+        <div key={key} className="card card--flat stack stack--s">
+          <strong className="small">{title(key)}</strong>
+          <div className="row">
+            {list.map((it) => (
+              <span key={it.value} className="chip" title={`Вводили: ${it.count} · последний раз ${formatDateTime(it.last)}`}>
+                {it.value}
+                <button className="icon-btn icon-btn--sm chip__x" onClick={() => dict.remove(it.key, it.value)} aria-label={`Удалить ${it.value}`} disabled={dict.readOnly}>
+                  <Trash2 size={12} />
+                </button>
+              </span>
+            ))}
+          </div>
+        </div>
+      ))}
+      {!dict.items.length && <div className="card empty small">Пока пусто. Начните вводить значения в поля — они появятся здесь.</div>}
+    </section>
+  );
+}
+
 export function VariablesPage() {
   useEffect(() => markSeen('menu:variables'), []);
   return (
@@ -137,10 +211,14 @@ export function VariablesPage() {
         <p>
           Значения, которые нужны часто и в разных местах: ФИО, телефоны, адреса, названия. В любом поле ввода нажмите{' '}
           <kbd>Ctrl</kbd>+<kbd>Пробел</kbd> — появится список переменных. Начните писать ключ или часть значения, чтобы сузить список.
+          А то, что вы вводите в поля, само подсказывается при наборе в таких же полях (словарь подсказок ниже).
         </p>
       </div>
       <WorkspaceGate>
-        <VariablesView />
+        <div className="stack stack--l">
+          <VariablesView />
+          <SuggestDictionary />
+        </div>
       </WorkspaceGate>
     </div>
   );

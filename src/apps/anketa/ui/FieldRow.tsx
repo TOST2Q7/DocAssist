@@ -79,10 +79,21 @@ export function FieldRow({ num, field, def, header, original, current, readOnly,
           value={current}
           rows={Math.min(4, Math.max(2, Math.ceil(current.length / 60)))}
           readOnly={readOnly}
+          data-field={field.fieldId ?? undefined}
+          data-kind={def?.varKind}
           onChange={(e) => onChange(e.target.value)}
         />
       ) : (
-        <input id={id} className={`input ${status === 'error' ? 'input--error' : ''}`} value={current} readOnly={readOnly} onChange={(e) => onChange(e.target.value)} />
+        <input
+          id={id}
+          className={`input ${status === 'error' ? 'input--error' : ''}`}
+          value={current}
+          readOnly={readOnly}
+          data-field={field.fieldId ?? undefined}
+          data-kind={def?.varKind}
+          autoComplete="off"
+          onChange={(e) => onChange(e.target.value)}
+        />
       )}
 
       <MarkedValue value={current} issues={field.issues} />

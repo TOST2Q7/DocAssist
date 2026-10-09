@@ -37,21 +37,23 @@ function RegexTester({ rule }: { rule: FieldRule }) {
   const [v, setV] = useState('');
   const { re, error } = compileRegex(rule.regex);
   if (error) return <span className="field__error">Ошибка в regex: {error}</span>;
-  if (!v) return <input className="input" value={v} onChange={(e) => setV(e.target.value)} placeholder="Проверить значение…" />;
   const ok = !re || re.test(v);
-  const fix = !ok && re ? suggestFix(v, re, rule.mask) : null;
+  const fix = v && !ok && re ? suggestFix(v, re, rule.mask) : null;
+  // Поле ввода всегда одно и то же — иначе при первом символе оно пересоздаётся и теряет курсор.
   return (
     <div className="stack stack--s">
-      <input className={`input ${ok ? '' : 'input--error'}`} value={v} onChange={(e) => setV(e.target.value)} placeholder="Проверить значение…" />
-      <span className="small" style={{ color: ok ? 'var(--success)' : 'var(--error)' }}>
-        {ok ? 'Подходит' : 'Не подходит'}
-        {fix && (
-          <span className="muted">
-            {' '}
-            · исправление: <span className="mono">{fix}</span>
-          </span>
-        )}
-      </span>
+      <input className={`input ${v && !ok ? 'input--error' : ''}`} value={v} onChange={(e) => setV(e.target.value)} placeholder="Проверить значение…" aria-label="Проверить значение" />
+      {v && (
+        <span className="small" style={{ color: ok ? 'var(--success)' : 'var(--error)' }}>
+          {ok ? 'Подходит' : 'Не подходит'}
+          {fix && (
+            <span className="muted">
+              {' '}
+              · исправление: <span className="mono">{fix}</span>
+            </span>
+          )}
+        </span>
+      )}
     </div>
   );
 }
@@ -124,7 +126,11 @@ function FieldEditor({ id, initial, rules, custom, onSave, onReset, onClose }: {
             <label className="field">
               <span className="field__label">Маска для исправления</span>
               <input className="input mono" value={r.mask ?? ''} onChange={(e) => set({ mask: e.target.value || undefined })} placeholder="8(999)999-99-99" />
-              <span className="field__hint">9 — цифра. По маске предлагается исправление: «80000000000» → «8(000)000-00-00».</span>
+              <span className="field__hint">
+                «9» — место для цифры, остальное пишется как есть. Если значение не прошло формат, из него берутся все цифры и
+                раскладываются по маске: «80001112233» → «8(000)111-22-33». Исправление предлагается, только если результат проходит
+                формат; применяете его вы.
+              </span>
             </label>
             <div className="field">
               <span className="field__label">Проверка</span>

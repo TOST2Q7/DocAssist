@@ -15,6 +15,7 @@ export * from './outbox/outbox';
 export * from './base/tree';
 export * from './base/base';
 export * from './people/people';
+export * from './suggest/suggest';
 export * from './tables/tables';
 export * from './registry/types';
 export * from './registry/badges';

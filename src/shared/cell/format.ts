@@ -41,6 +41,13 @@ export const PRESETS: FormatPreset[] = [
 
 export const PRESET_BY_ID = new Map(PRESETS.map((p) => [p.id, p]));
 
+/** Что ожидается — для сообщения об ошибке: название готового формата или сам regex. */
+export function describeFormat(regex: string): string {
+  const p = PRESETS.find((x) => x.regex === regex);
+  if (p) return p.title.toLowerCase();
+  return regex.length <= 60 ? `формат ${regex}` : 'свой формат';
+}
+
 export function compileRegex(re: string): { re: RegExp | null; error?: string } {
   if (!re) return { re: null };
   try {
@@ -92,6 +99,7 @@ export function suggestFix(value: string, re: RegExp, mask?: string): string | n
     padDate(base),
     base.replace(/^http:\/\//, 'https://').replace(/^(?:https?:\/\/)?(?:www\.|m\.)?vk\.(ru|com)\//, 'https://vk.$1/'),
     mask ? fillMask(base, mask) : null,
+    /\d/.test(base) ? base.replace(/\D/g, '') : null,
   ];
   for (const c of candidates) if (c !== null && c !== value && re.test(c)) return c;
   return null;

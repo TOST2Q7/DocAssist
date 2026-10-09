@@ -1046,3 +1046,13 @@ a.chip:hover {
   padding: 4px 10px;
   border-top: 1px solid var(--border);
 }
+.var-suggest__sep {
+  padding: 6px 8px 2px;
+  border-top: 1px solid var(--border);
+  margin-top: 4px;
+}
+.var-suggest--auto .var-suggest__foot {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
