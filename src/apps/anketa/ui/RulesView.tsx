@@ -2,12 +2,11 @@ import { ChevronDown, ChevronRight, RotateCcw } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import { FIELD_BY_ID, PERSON_FIELDS } from '@/core/schema/fields';
 import { ABBR_GROUPS, ABBREVIATIONS } from '@/shared/cell/abbr';
-import { blocksMask, blocksToRegex, PRESET_BLOCKS } from '@/shared/cell/blocks';
-import { compileRegex, lintRegex, PRESETS, suggestFix } from '@/shared/cell/format';
-import { BlocksEditor } from './BlocksEditor';
+import { checkBlocks, matcher } from '@/shared/cell/blocks';
 import { parseOrder, registrationTemplate } from '@/shared/cell/template';
 import { Alert } from '@/ui/Alert';
 import { allTreeNames, DEFAULT_EXAMPLES, defaultRules, KIND_LABELS, treeNameOf, type FieldKind, type FieldRule } from '../model/rules';
+import { FormatEditor, FormatTester } from './BlocksEditor';
 import { useRules } from './hooks';
 import { TemplateEditor } from './TemplateEditor';
 
@@ -27,6 +26,7 @@ function Summary({ id, rule, rules }: { id: string; rule: FieldRule; rules: Reco
       )}
       {rule.kind !== 'tree' && rule.example && <span className="small muted mono">{rule.example}</span>}
       {rule.kind === 'list' && tree && <span className="small faint">база «{tree}»</span>}
+      {rule.legacy && <span className="chip chip--warn small">был свой regex — проверьте формат</span>}
       {rule.within && <span className="chip small">внутри «{label(rule.within)}»</span>}
       {!rule.required && <span className="chip small">можно пусто</span>}
       {(rule.confirm || rule.unique) && <span className="chip chip--confirm small">галочка у каждого</span>}
@@ -35,36 +35,11 @@ function Summary({ id, rule, rules }: { id: string; rule: FieldRule; rules: Reco
   );
 }
 
-function RegexTester({ rule }: { rule: FieldRule }) {
-  const [v, setV] = useState('');
-  const { re, error } = compileRegex(rule.regex);
-  if (error) return <span className="field__error">Ошибка в regex: {error}</span>;
-  const ok = !re || re.test(v);
-  const fix = v && !ok && re ? suggestFix(v, re, rule.mask) : null;
-  // Поле ввода всегда одно и то же — иначе при первом символе оно пересоздаётся и теряет курсор.
-  return (
-    <div className="stack stack--s">
-      <input className={`input ${v && !ok ? 'input--error' : ''}`} value={v} onChange={(e) => setV(e.target.value)} placeholder="Проверить значение…" aria-label="Проверить значение" />
-      {v && (
-        <span className="small" style={{ color: ok ? 'var(--success)' : 'var(--error)' }}>
-          {ok ? 'Подходит' : 'Не подходит'}
-          {fix && (
-            <span className="muted">
-              {' '}
-              · исправление: <span className="mono">{fix}</span>
-            </span>
-          )}
-        </span>
-      )}
-    </div>
-  );
-}
-
 function FieldEditor({ id, initial, rules, custom, onSave, onReset, onClose }: { id: string; initial: FieldRule; rules: Record<string, FieldRule>; custom: boolean; onSave: (r: FieldRule) => void; onReset: () => void; onClose: () => void }) {
   const [r, setR] = useState<FieldRule>(() => structuredClone(initial));
   const set = (patch: Partial<FieldRule>) => setR((x) => ({ ...x, ...patch }));
-  const { error } = compileRegex(r.regex);
-  const preset = PRESETS.find((p) => p.regex === r.regex);
+  const problems = r.kind === 'tree' ? (r.template?.keys.flatMap((k) => checkBlocks(k.format).map((p) => `«${k.title}»: ${p}`)) ?? []) : checkBlocks(r.format);
+  const exampleBad = r.kind !== 'tree' && !!r.example && !matcher(r.format).test(r.example);
   const listFields = PERSON_FIELDS.filter((f) => f.id !== id && rules[f.id]?.kind === 'list');
   const treeNames = allTreeNames(rules);
   const orderError = r.kind === 'tree' && r.template ? parseOrder(r.template.order, r.template.keys.length).error : undefined;
@@ -86,81 +61,30 @@ function FieldEditor({ id, initial, rules, custom, onSave, onReset, onClose }: {
           ))}
         </div>
         <span className="field__hint">
-          {r.kind === 'text' && 'Значение должно проходить формат (regex). В базе не хранится.'}
-          {r.kind === 'list' && 'Формат (regex) + значение должно быть в базе («ключ:значение»). Новое — предупреждение и «Подтвердить».'}
+          {r.kind === 'text' && 'Значение должно подходить под формат из блоков. В базе не хранится.'}
+          {r.kind === 'list' && 'Формат из блоков + значение должно быть в базе («ключ:значение»). Новое — предупреждение и «Подтвердить».'}
           {r.kind === 'tree' && 'Ячейка дробится на части по конструктору, части сверяются с древом — каждая внутри предыдущей.'}
         </span>
       </div>
 
       {r.kind !== 'tree' && (
         <>
+          {r.legacy && (
+            <Alert kind="warning">
+              В версии 0.3 здесь был свой regex <span className="mono">{r.legacy}</span>. В блоки он не переводится, поэтому сейчас
+              стоит формат по умолчанию. Соберите нужный формат из блоков и сохраните — тогда это предупреждение исчезнет.
+            </Alert>
+          )}
+          <FormatEditor value={r.format} onChange={(format) => set({ format })} onPreset={(p) => set({ example: p.example })} />
           <div className="grid-2">
-            <label className="field">
-              <span className="field__label">Готовый формат</span>
-              <select
-                className="select"
-                value={preset?.id ?? ''}
-                onChange={(e) => {
-                  const p = PRESETS.find((x) => x.id === e.target.value);
-                  if (p) set({ regex: p.regex, example: p.example, mask: p.mask, blocks: PRESET_BLOCKS[p.id] ? structuredClone(PRESET_BLOCKS[p.id]) : undefined });
-                }}
-              >
-                <option value="">— свой —</option>
-                {PRESETS.map((p) => (
-                  <option key={p.id} value={p.id}>
-                    {p.title}
-                    {p.example ? ` — ${p.example}` : ''}
-                  </option>
-                ))}
-              </select>
-            </label>
             <label className="field">
               <span className="field__label">Пример правильного значения</span>
-              <input className="input" value={r.example} onChange={(e) => set({ example: e.target.value })} />
-            </label>
-          </div>
-          <div className="field">
-            <span className="field__label">Конструктор формата (блоки)</span>
-            {r.blocks ? (
-              <BlocksEditor blocks={r.blocks} onChange={(blocks) => set({ blocks, regex: blocksToRegex(blocks), mask: blocksMask(blocks) })} />
-            ) : (
-              <div className="row small">
-                <span className="muted">Формат задан regex вручную.</span>
-                <button type="button" className="btn btn--sm" onClick={() => set({ blocks: [] })}>
-                  Собрать из блоков
-                </button>
-              </div>
-            )}
-          </div>
-          <label className="field">
-            <span className="field__label">Формат (regex)</span>
-            <input className={`input mono ${error ? 'input--error' : ''}`} value={r.regex} onChange={(e) => set({ regex: e.target.value, blocks: undefined })} placeholder="пусто — любое значение" />
-            {error ? (
-              <span className="field__error">{error}</span>
-            ) : (
-              <span className="field__hint">{r.blocks ? 'Собирается из блоков. Если править вручную — блоки отключатся.' : 'Регулярное выражение JavaScript. ^ и $ — начало и конец значения.'}</span>
-            )}
-            {!error &&
-              lintRegex(r.regex).map((w) => (
-                <span key={w} className="field__warn">
-                  {w}
-                </span>
-              ))}
-          </label>
-
-          <div className="grid-2">
-            <label className="field">
-              <span className="field__label">Маска для исправления</span>
-              <input className="input mono" value={r.mask ?? ''} onChange={(e) => set({ mask: e.target.value || undefined })} placeholder="8(999)999-99-99" />
-              <span className="field__hint">
-                «9» — место для цифры, остальное пишется как есть. Если значение не прошло формат, из него берутся все цифры и
-                раскладываются по маске: «80001112233» → «8(000)111-22-33». Исправление предлагается, только если результат проходит
-                формат; применяете его вы.
-              </span>
+              <input className={`input ${exampleBad ? 'input--error' : ''}`} value={r.example} onChange={(e) => set({ example: e.target.value })} />
+              {exampleBad ? <span className="field__warn">Пример не подходит под формат</span> : <span className="field__hint">Показывается в подсказке «Пример: …», когда значение с ошибкой.</span>}
             </label>
             <div className="field">
-              <span className="field__label">Проверка</span>
-              <RegexTester rule={r} />
+              <span className="field__label">Проверить значение</span>
+              <FormatTester blocks={r.format} />
             </div>
           </div>
         </>
@@ -207,7 +131,16 @@ function FieldEditor({ id, initial, rules, custom, onSave, onReset, onClose }: {
       </div>
 
       <div className="row">
-        <button className="btn btn--primary" onClick={() => onSave(r)} disabled={!!error || !!orderError}>
+        <button
+          className="btn btn--primary"
+          onClick={() => {
+            const out = { ...r };
+            delete out.legacy;
+            onSave(out);
+          }}
+          disabled={problems.length > 0 || !!orderError}
+          title={problems.length ? 'Сначала исправьте блоки формата' : undefined}
+        >
           Сохранить
         </button>
         <button className="btn" onClick={onClose}>
@@ -254,8 +187,7 @@ function ExamplesEditor({ rules, readOnly, setField, resetField, defaults }: { r
   const check = (id: string, v: string) => {
     const r = rules[id];
     if (!v || r.kind === 'tree') return true;
-    const { re } = compileRegex(r.regex);
-    return !re || re.test(v);
+    return matcher(r.format).test(v);
   };
   return (
     <details className="card card--flat examples">
@@ -307,7 +239,7 @@ export function RulesView() {
       {error && <Alert kind="error">{error}</Alert>}
       {readOnly && <Alert kind="warning">Правила сохранены более новой версией DocAssist — сейчас только просмотр.</Alert>}
       <p className="muted" style={{ margin: 0 }}>
-        У каждого столбца анкеты своё правило: формат (regex), список значений из базы («ключ:значение») или древо с
+        У каждого столбца анкеты своё правило: формат из блоков, список значений из базы («ключ:значение») или древо с
         конструктором. База сначала пустая — значения попадают в неё, когда вы их подтверждаете. Индивидуальное (паспорт, СНИЛС,
         телефон…) всегда подтверждается галочкой у каждого человека.
       </p>

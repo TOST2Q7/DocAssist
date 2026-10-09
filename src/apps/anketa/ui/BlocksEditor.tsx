@@ -1,12 +1,32 @@
-import { ArrowDown, ArrowUp, Plus, X } from 'lucide-react';
-import { BLOCK_HINTS, BLOCK_TITLES, blocksToRegex, checkBlocks, describeBlocks, newBlock, type Block, type BlockType, type CaseMode, type Count } from '@/shared/cell/blocks';
+import { ArrowDown, ArrowUp, ChevronDown, ChevronRight, Plus, X } from 'lucide-react';
+import { useState, type ReactNode } from 'react';
+import {
+  BASIC_BLOCKS,
+  BLOCK_HINTS,
+  BLOCK_TITLES,
+  blocksMask,
+  checkBlocks,
+  describeBlocks,
+  describeFormat,
+  findPreset,
+  FORMAT_PRESETS,
+  matcher,
+  newBlock,
+  READY_BLOCKS,
+  sampleOf,
+  type Block,
+  type BlockType,
+  type CaseMode,
+  type Count,
+  type FormatPreset,
+  type QuotesMode,
+} from '@/shared/cell/blocks';
+import { suggestFix } from '@/shared/cell/format';
 
 /*
- * Конструктор формата — мини-язык блоков. Значение собирается из блоков по порядку:
- * «Текст 8(» · «Цифры 3» · «Текст )» … — и превращается в regex автоматически.
+ * Формат значения — мини-язык блоков. Значение собирается из блоков по порядку:
+ * «Текст 8(» · «Цифры 3» · «Текст )» … Под блоками — что получилось словами и пример.
  */
-
-const TYPES = Object.keys(BLOCK_TITLES) as BlockType[];
 
 const num = (v: string, fallback: number) => (/^\d+$/.test(v.trim()) ? Number(v.trim()) : fallback);
 
@@ -29,6 +49,14 @@ function CountInput({ count, onChange, unit }: { count: Count; onChange: (c: Cou
   );
 }
 
+function Check({ checked, onChange, children, title }: { checked: boolean; onChange: (v: boolean) => void; children: ReactNode; title?: string }) {
+  return (
+    <label className="check" title={title}>
+      <input type="checkbox" checked={checked} onChange={(e) => onChange(e.target.checked)} /> {children}
+    </label>
+  );
+}
+
 function BlockBody({ b, set }: { b: Block; set: (patch: Partial<Block>) => void }) {
   switch (b.type) {
     case 'text':
@@ -42,20 +70,21 @@ function BlockBody({ b, set }: { b: Block; set: (patch: Partial<Block>) => void 
           <input className="input input--sm" inputMode="numeric" value={b.from} onChange={(e) => set({ from: num(e.target.value, 0) })} aria-label="Число от" />
           <span className="muted">до</span>
           <input className="input input--sm" inputMode="numeric" value={b.to} onChange={(e) => set({ to: num(e.target.value, b.from) })} aria-label="Число до" />
+          <span className="small faint">без нулей впереди: «7», а не «07»</span>
         </span>
       );
     case 'chars':
       return (
         <span className="blk__chars">
-          <label className="check">
-            <input type="checkbox" checked={b.ru} onChange={(e) => set({ ru: e.target.checked })} /> русские
-          </label>
-          <label className="check">
-            <input type="checkbox" checked={b.en} onChange={(e) => set({ en: e.target.checked })} /> латинские
-          </label>
-          <label className="check">
-            <input type="checkbox" checked={b.digits} onChange={(e) => set({ digits: e.target.checked })} /> цифры
-          </label>
+          <Check checked={b.ru} onChange={(ru) => set({ ru })}>
+            русские
+          </Check>
+          <Check checked={b.en} onChange={(en) => set({ en })}>
+            латинские
+          </Check>
+          <Check checked={b.digits} onChange={(digits) => set({ digits })}>
+            цифры
+          </Check>
           <input className="input input--sm mono blk__extra" value={b.extra} onChange={(e) => set({ extra: e.target.value })} placeholder="свои: -._" aria-label="Свои символы" />
           <select className="select select--sm" value={b.case} onChange={(e) => set({ case: e.target.value as CaseMode })} aria-label="Регистр">
             <option value="any">любой регистр</option>
@@ -77,11 +106,68 @@ function BlockBody({ b, set }: { b: Block; set: (patch: Partial<Block>) => void 
           aria-label="Варианты"
         />
       );
-    case 'space':
     case 'anytext':
+      return (
+        <span className="blk__chars">
+          <Check checked={!!b.cap} onChange={(cap) => set({ cap: cap || undefined })} title="Первая буква заглавная (или цифра)">
+            с заглавной
+          </Check>
+          <Check checked={!!b.ru} onChange={(ru) => set({ ru: ru || undefined })} title="Только русские буквы, цифры и дефис — без точек, кавычек и латиницы">
+            только русские буквы, цифры, дефис
+          </Check>
+          {!b.ru && (
+            <select className="select select--sm" value={b.quotes ?? 'any'} onChange={(e) => set({ quotes: e.target.value === 'any' ? undefined : (e.target.value as QuotesMode) })} aria-label="Кавычки">
+              <option value="any">кавычки любые</option>
+              <option value="guillemets">кавычки только «ёлочки»</option>
+              <option value="none">без кавычек</option>
+            </select>
+          )}
+          <span className="small faint">слова через один пробел</span>
+        </span>
+      );
+    case 'word':
+      return (
+        <span className="blk__chars">
+          <Check checked={b.hyphen} onChange={(hyphen) => set({ hyphen })}>
+            можно двойное через дефис: «Петрова-Водкина»
+          </Check>
+        </span>
+      );
+    case 'house':
+      return (
+        <span className="blk__chars">
+          <Check checked={b.slash} onChange={(slash) => set({ slash })}>
+            можно через дробь: «12/3», «12а/1б»
+          </Check>
+          <span className="small faint">{b.slash ? '1, 12а, 12/3' : '1, 12а'}</span>
+        </span>
+      );
+    case 'date':
+      return (
+        <span className="blk__count">
+          <span className="muted">ДД.ММ.ГГГГ, годы от</span>
+          <input className="input input--sm" inputMode="numeric" value={b.yearFrom} onChange={(e) => set({ yearFrom: num(e.target.value, b.yearFrom) })} aria-label="Год от" />
+          <span className="muted">до</span>
+          <input className="input input--sm" inputMode="numeric" value={b.yearTo} onChange={(e) => set({ yearTo: num(e.target.value, b.yearTo) })} aria-label="Год до" />
+          <span className="small faint">несуществующие даты (31.04, 30.02) не пройдут</span>
+        </span>
+      );
+    case 'time':
+      return (
+        <span className="blk__chars">
+          <Check checked={b.seconds} onChange={(seconds) => set({ seconds })}>
+            с секундами: ЧЧ:ММ:СС
+          </Check>
+        </span>
+      );
+    case 'space':
+    case 'email':
       return <span className="small faint">{BLOCK_HINTS[b.type]}</span>;
   }
 }
+
+/** Как исправляется по цифрам: «8(999)999-99-99» → «8(___)___-__-__». */
+const maskView = (mask: string) => mask.replace(/9/g, '_');
 
 export function BlocksEditor({ blocks, onChange }: { blocks: Block[]; onChange: (blocks: Block[]) => void }) {
   const setAt = (i: number, patch: Partial<Block>) => onChange(blocks.map((b, j) => (j === i ? ({ ...b, ...patch } as Block) : b)));
@@ -93,15 +179,31 @@ export function BlocksEditor({ blocks, onChange }: { blocks: Block[]; onChange: 
     onChange(next);
   };
   const problems = checkBlocks(blocks);
+  const sample = sampleOf(blocks);
+  const mask = blocksMask(blocks);
+  const addRow = (title: string, types: BlockType[]) => (
+    <div className="row small blk__add">
+      <span className="faint blk__add-cap">
+        <Plus size={14} /> {title}
+      </span>
+      {types.map((t) => (
+        <button key={t} type="button" className="btn btn--sm" onClick={() => onChange([...blocks, newBlock(t)])} title={BLOCK_HINTS[t]}>
+          {BLOCK_TITLES[t]}
+        </button>
+      ))}
+    </div>
+  );
 
   return (
     <div className="blocks stack stack--s">
-      {blocks.length === 0 && <div className="small muted">Блоков нет — подходит любое значение. Добавьте первый блок.</div>}
+      {blocks.length === 0 && <div className="small muted">Блоков нет — подходит любое значение. Добавьте первый блок или выберите готовый формат.</div>}
       {blocks.map((b, i) => (
         <div key={i} className="blk card card--flat">
           <div className="blk__head">
             <span className="blk__num">{i + 1}</span>
-            <strong className="small nowrap">{BLOCK_TITLES[b.type]}</strong>
+            <strong className="small nowrap" title={BLOCK_HINTS[b.type]}>
+              {BLOCK_TITLES[b.type]}
+            </strong>
             <span className="blk__ctrl">
               <label className="check small" title="Блока может не быть">
                 <input type="checkbox" checked={!!b.optional} onChange={(e) => setAt(i, { optional: e.target.checked || undefined })} /> необязательно
@@ -122,14 +224,8 @@ export function BlocksEditor({ blocks, onChange }: { blocks: Block[]; onChange: 
           </div>
         </div>
       ))}
-      <div className="row small">
-        <Plus size={14} className="faint" />
-        {TYPES.map((t) => (
-          <button key={t} type="button" className="btn btn--sm" onClick={() => onChange([...blocks, newBlock(t)])} title={BLOCK_HINTS[t]}>
-            {BLOCK_TITLES[t]}
-          </button>
-        ))}
-      </div>
+      {addRow('Основные:', BASIC_BLOCKS)}
+      {addRow('Готовые:', READY_BLOCKS)}
       {problems.map((p) => (
         <span key={p} className="field__warn">
           {p}
@@ -141,12 +237,123 @@ export function BlocksEditor({ blocks, onChange }: { blocks: Block[]; onChange: 
             <span className="muted">Значение: </span>
             {describeBlocks(blocks)}
           </div>
-          <div>
-            <span className="muted">Regex: </span>
-            <span className="mono">{blocksToRegex(blocks)}</span>
-          </div>
+          {sample && (
+            <div>
+              <span className="muted">Например: </span>
+              <span className="mono">{sample}</span>
+            </div>
+          )}
+          {mask && (
+            <div>
+              <span className="muted">Исправление по цифрам: </span>
+              <span className="mono">{maskView(mask)}</span>
+              <span className="faint"> — цифры из неправильного значения раскладываются по местам «_»</span>
+            </div>
+          )}
         </div>
       )}
+    </div>
+  );
+}
+
+/** Проверить значение по формату: подходит или нет, и какое исправление будет предложено. */
+export function FormatTester({ blocks }: { blocks: Block[] }) {
+  const [v, setV] = useState('');
+  const m = matcher(blocks);
+  const ok = m.test(v);
+  const fix = v && !ok ? suggestFix(v, m.test, blocksMask(blocks)) : null;
+  // Поле ввода всегда одно и то же — иначе при первом символе оно пересоздаётся и теряет курсор.
+  return (
+    <div className="stack stack--s">
+      <input className={`input ${v && !ok ? 'input--error' : ''}`} value={v} onChange={(e) => setV(e.target.value)} placeholder="Проверить значение…" aria-label="Проверить значение" />
+      {v && (
+        <span className="small" style={{ color: ok ? 'var(--success)' : 'var(--error)' }}>
+          {ok ? 'Подходит' : 'Не подходит'}
+          {fix && (
+            <span className="muted">
+              {' '}
+              · исправление: <span className="mono">{fix}</span>
+            </span>
+          )}
+        </span>
+      )}
+    </div>
+  );
+}
+
+/**
+ * Формат: готовый (выпадающий список) или свой из блоков.
+ * compact — для частей конструктора: одна строка с готовым форматом, блоки раскрываются по кнопке.
+ */
+export function FormatEditor({
+  value,
+  onChange,
+  presets = FORMAT_PRESETS,
+  onPreset,
+  compact,
+  label = 'Готовый формат',
+}: {
+  value: Block[];
+  onChange: (blocks: Block[]) => void;
+  presets?: FormatPreset[];
+  onPreset?: (p: FormatPreset) => void;
+  compact?: boolean;
+  label?: string;
+}) {
+  const preset = findPreset(value, presets);
+  const current = preset?.id ?? (value.length ? 'custom' : 'any');
+  const [open, setOpen] = useState(!compact);
+  const select = (
+    <select
+      className={`select fmt__select ${compact ? 'select--sm' : ''}`}
+      value={current}
+      aria-label={label}
+      onChange={(e) => {
+        const id = e.target.value;
+        if (id === 'any') onChange([]);
+        if (id === 'custom') setOpen(true);
+        const p = presets.find((x) => x.id === id);
+        if (p) {
+          onChange(structuredClone(p.blocks));
+          onPreset?.(p);
+        }
+      }}
+    >
+      <option value="any">Любое значение</option>
+      {presets.map((p) => (
+        <option key={p.id} value={p.id}>
+          {p.title}
+          {p.example ? ` — ${p.example}` : ''}
+        </option>
+      ))}
+      <option value="custom">{current === 'custom' ? 'Свой — из блоков ниже' : 'Свой — собрать из блоков…'}</option>
+    </select>
+  );
+
+  if (!compact) {
+    return (
+      <div className="fmt stack stack--s">
+        <label className="field">
+          <span className="field__label">{label}</span>
+          {select}
+          <span className="field__hint">Готовый формат подставляет блоки — их можно поправить. Или соберите свой из блоков.</span>
+        </label>
+        <BlocksEditor blocks={value} onChange={onChange} />
+      </div>
+    );
+  }
+
+  return (
+    <div className="fmt stack stack--s">
+      <div className="fmt__line">
+        <span className="small muted key-row__cap">Формат:</span>
+        {select}
+        <button type="button" className="btn btn--sm btn--ghost" onClick={() => setOpen(!open)} aria-expanded={open}>
+          {open ? <ChevronDown size={14} /> : <ChevronRight size={14} />} Блоки{value.length ? ` (${value.length})` : ''}
+        </button>
+      </div>
+      {!open && current === 'custom' && <span className="small muted">{describeFormat(value)}</span>}
+      {open && <BlocksEditor blocks={value} onChange={onChange} />}
     </div>
   );
 }

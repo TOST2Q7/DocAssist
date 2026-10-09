@@ -1,5 +1,6 @@
 import type { Step } from '@/core/base/tree';
 import { ABBREVIATIONS, type Abbr } from './abbr';
+import { matcher } from './blocks';
 import type { CellKey, CellTemplate, KeyTag } from './template';
 
 /*
@@ -113,19 +114,7 @@ function longestTag(dict: Dict, tokens: Token[], from: number, dir: 1 | -1, limi
   return null;
 }
 
-const compile = (re: string): RegExp | null => {
-  if (!re) return null;
-  try {
-    return new RegExp(re, 'u');
-  } catch {
-    return null;
-  }
-};
-
-const fits = (key: CellKey, value: string) => {
-  const re = compile(key.regex);
-  return !re || re.test(value);
-};
+const fits = (key: CellKey, value: string) => matcher(key.format).test(value);
 
 const capitalize = (s: string) => s.replace(/^\p{Ll}/u, (c) => c.toUpperCase());
 

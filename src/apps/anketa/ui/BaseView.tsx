@@ -4,7 +4,7 @@ import { useBaseTree } from '@/core/base/base';
 import { chainText, stepText, type BaseTree, type Step, type TreeNode } from '@/core/base/tree';
 import { FIELD_BY_ID, PERSON_FIELDS } from '@/core/schema/fields';
 import { findAbbreviations } from '@/shared/cell/abbr';
-import { compileRegex } from '@/shared/cell/format';
+import { describeFormat, matcher, type Block } from '@/shared/cell/blocks';
 import { parseOrder } from '@/shared/cell/template';
 import { useToast } from '@/ui/Toast';
 import { WorkspaceGate } from '@/ui/WorkspaceGate';
@@ -26,7 +26,7 @@ interface TagOption {
   abbr?: string;
   abbrTitle?: string;
   after?: boolean;
-  regex: string;
+  format: Block[];
   /** Уровень в древе (меньше — выше). */
   level: number;
 }
@@ -48,15 +48,15 @@ function optionsFor(tree: string, rules: Record<string, FieldRule>): { options: 
       const { order } = parseOrder(r.template.order, r.template.keys.length);
       order.forEach((ki, level) => {
         const k = r.template!.keys[ki];
-        if (!k.tags.length) push({ id: `${k.id}|`, k: k.id, keyTitle: k.title, regex: k.regex, level });
-        for (const t of k.tags) push({ id: `${k.id}|${t.abbr}`, k: k.id, keyTitle: k.title, abbr: t.abbr, abbrTitle: t.title, after: t.after, regex: k.regex, level });
+        if (!k.tags.length) push({ id: `${k.id}|`, k: k.id, keyTitle: k.title, format: k.format, level });
+        for (const t of k.tags) push({ id: `${k.id}|${t.abbr}`, k: k.id, keyTitle: k.title, abbr: t.abbr, abbrTitle: t.title, after: t.after, format: k.format, level });
       });
     } else if (r.kind === 'list') {
       if (r.within) {
         const pr = rules[r.within];
-        push({ id: `${r.within}|`, k: r.within, keyTitle: FIELD_BY_ID.get(r.within)?.label ?? r.within, regex: pr?.regex ?? '', level: 0 });
+        push({ id: `${r.within}|`, k: r.within, keyTitle: FIELD_BY_ID.get(r.within)?.label ?? r.within, format: pr?.format ?? [], level: 0 });
       }
-      push({ id: `${f.id}|`, k: f.id, keyTitle: f.label, regex: r.regex, level: r.within ? 1 : 0 });
+      push({ id: `${f.id}|`, k: f.id, keyTitle: f.label, format: r.format, level: r.within ? 1 : 0 });
     }
   }
   return { options, fields };
@@ -109,8 +109,7 @@ function AddForm({ tree, parent, options, onClearParent, onAdd }: { tree: BaseTr
   const abbrs = value ? findAbbreviations(value) : [];
   if (abbrs.length) warnings.push(`Приписки писать не нужно — сохранится неправильно! Уберите «${abbrs.join('», «')}»: приписка задаётся тегом.`);
   if (value && opt) {
-    const { re } = compileRegex(opt.regex);
-    if (re && !re.test(value)) warnings.push(`Не подходит под формат части «${opt.keyTitle}»: ${opt.regex}`);
+    if (!matcher(opt.format).test(value)) warnings.push(`Не подходит под формат части «${opt.keyTitle}»: ${describeFormat(opt.format)}`);
   }
   if (word && word !== value) warnings.push('Лишние пробелы в начале или в конце — будут убраны.');
   if (parent && opt && opt.level <= levelOfKey(parent.k)) warnings.push(`По порядку древа «${opt.keyTitle}» не бывает внутри «${stepText(parent)}».`);

@@ -593,6 +593,11 @@
   border-color: var(--warning);
   color: var(--warning);
 }
+.chip--warn {
+  border-color: var(--warning);
+  color: var(--warning);
+  background: var(--warning-soft);
+}
 .chip--unique {
   border-color: var(--error);
   color: var(--error);
@@ -643,7 +648,12 @@
   flex-wrap: wrap;
   align-items: center;
   gap: 4px;
-  flex: 1;
+  flex: 1 1 200px;
+  min-width: 0;
+}
+.tagchips > * {
+  min-width: 0;
+  max-width: 100%;
 }
 .chip--tag {
   padding: 0 2px 0 0;
@@ -785,5 +795,27 @@
   padding: 8px 10px;
   border-radius: var(--radius-s);
   background: var(--surface-2);
-  word-break: break-all;
+  overflow-wrap: anywhere;
+}
+.blk__add {
+  gap: 4px;
+}
+.blk__add-cap {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 84px;
+}
+.fmt__line {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.fmt__line .fmt__select {
+  flex: 1;
+  min-width: 160px;
+}
+.fmt .field > .fmt__select {
+  width: 100%;
 }

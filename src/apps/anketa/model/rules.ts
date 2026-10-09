@@ -1,30 +1,28 @@
 import { FIELD_BY_ID, PERSON_FIELDS } from '@/core/schema/fields';
 import { defineDocType } from '@/core/schema/docType';
-import { PRESET_BLOCKS, type Block } from '@/shared/cell/blocks';
-import { PRESET_BY_ID } from '@/shared/cell/format';
-import { birthplaceTemplate, registrationTemplate, residenceTemplate, type CellTemplate } from '@/shared/cell/template';
+import { PRESET_BY_ID, type Block } from '@/shared/cell/blocks';
+import { regexToBlocks } from '@/shared/cell/legacy';
+import { birthplaceTemplate, registrationTemplate, residenceTemplate, type CellKey, type CellTemplate } from '@/shared/cell/template';
 
 /*
  * Шаблоны и правила проверки. Хранятся в папке приложения: «Проверка анкет/rules.json».
- * Версия 3 — проверка по regex, спискам «ключ:значение» и древу с конструктором.
+ * Версия 4 — формат из блоков, списки «ключ:значение» и древо с конструктором (в версии 3 формат был regex).
  */
 
 export type FieldKind = 'text' | 'list' | 'tree';
 
 export const KIND_LABELS: Record<FieldKind, string> = {
-  text: 'Формат (regex)',
+  text: 'Формат',
   list: 'Список из базы',
   tree: 'Древо (конструктор)',
 };
 
 export interface FieldRule {
   kind: FieldKind;
-  /** Формат значения — regex. Для древа формат задаётся у каждой части в конструкторе. */
-  regex: string;
+  /** Формат значения — блоки. Пусто — любое. Для древа формат задаётся у каждой части в конструкторе. */
+  format: Block[];
   /** Пример правильного значения — для подсказки. */
   example: string;
-  /** Маска для исправления (9 — цифра): «8(999)999-99-99». */
-  mask?: string;
   /** Пустое значение — ошибка. */
   required: boolean;
   /** Индивидуальное значение: всегда подтверждать у каждого человека отдельно (галочка). */
@@ -37,8 +35,8 @@ export interface FieldRule {
   within?: string;
   /** Конструктор ячейки (для древа). */
   template?: CellTemplate;
-  /** Формат из блоков (мини-язык); regex собирается из них. Нет блоков — regex задан вручную. */
-  blocks?: Block[];
+  /** Свой regex из версии 0.3, который не перевёлся в блоки: показывается в правилах, пока правило не сохранят. */
+  legacy?: string;
 }
 
 export interface AnketaRules {
@@ -47,13 +45,10 @@ export interface AnketaRules {
 
 const fmt = (preset: string, extra: Partial<FieldRule> = {}): FieldRule => {
   const p = PRESET_BY_ID.get(preset)!;
-  const blocks = PRESET_BLOCKS[preset];
   return {
     kind: 'text',
-    regex: p.regex,
+    format: structuredClone(p.blocks),
     example: p.example,
-    ...(p.mask ? { mask: p.mask } : {}),
-    ...(blocks ? { blocks: structuredClone(blocks) } : {}),
     required: true,
     confirm: false,
     unique: false,
@@ -63,7 +58,7 @@ const fmt = (preset: string, extra: Partial<FieldRule> = {}): FieldRule => {
 const list = (preset: string, extra: Partial<FieldRule> = {}): FieldRule => ({ ...fmt(preset), kind: 'list', ...extra });
 const tree = (template: CellTemplate, extra: Partial<FieldRule> = {}): FieldRule => ({
   kind: 'tree',
-  regex: '',
+  format: [],
   example: '',
   required: true,
   confirm: false,
@@ -160,14 +155,45 @@ export function defaultRules(): Record<string, FieldRule> {
 /** Столбец, который не удалось сопоставить с анкетой: только без лишних пробелов. */
 export const OTHER_RULE: FieldRule = fmt('text', { required: false });
 
+/** Часть конструктора 0.3: regex → блоки; не перевёлся — формат части по умолчанию (или любое значение). */
+function migrateKey03(fieldId: string, key: any, defaults: Record<string, FieldRule>): CellKey {
+  const { regex, ...rest } = key ?? {};
+  const fallback = defaults[fieldId]?.template?.keys.find((k) => k.id === rest.id)?.format ?? [];
+  const format = typeof regex === 'string' ? (regexToBlocks(regex, true) ?? structuredClone(fallback)) : structuredClone(fallback);
+  return { ...rest, format } as CellKey;
+}
+
+/** Правило 0.3 → 0.4: формат-regex → блоки. Блоки из конструктора 0.3 переносятся как есть. */
+export function migrateRule03(fieldId: string, old: any, defaults: Record<string, FieldRule> = defaultRules()): FieldRule {
+  const def = defaults[fieldId] ?? OTHER_RULE;
+  const { regex, mask: _mask, blocks, ...rest } = old ?? {};
+  const out = { ...def, ...rest } as FieldRule;
+  if (Array.isArray(blocks)) out.format = blocks;
+  else if (typeof regex === 'string') {
+    const converted = regexToBlocks(regex);
+    if (converted) out.format = converted;
+    else {
+      out.format = structuredClone(def.format);
+      out.legacy = regex;
+    }
+  }
+  if (out.template?.keys) out.template = { ...out.template, keys: out.template.keys.map((k) => migrateKey03(fieldId, k, defaults)) };
+  return out;
+}
+
 export const rulesDocType = defineDocType<AnketaRules>({
   type: 'anketa/rules',
-  version: 3,
+  version: 4,
   migrations: {
     // 0.1 → 0.2: см. историю; данные версии 1 сразу переводятся в формат 2, затем в 3.
     1: (v1: unknown) => v1,
     // 0.2 → 0.3: новая механика проверки (regex, списки, древо). Старые настройки не переносятся.
     2: (): AnketaRules => ({ fields: {} }),
+    // 0.3 → 0.4: формат — блоки вместо regex.
+    3: (v3: { fields?: Record<string, unknown> }): AnketaRules => {
+      const defaults = defaultRules();
+      return { fields: Object.fromEntries(Object.entries(v3?.fields ?? {}).map(([id, r]) => [id, migrateRule03(id, r, defaults)])) };
+    },
   },
   empty: () => ({ fields: {} }),
 });
@@ -176,13 +202,7 @@ export const rulesDocType = defineDocType<AnketaRules>({
 export function resolveRules(stored: AnketaRules | undefined): Record<string, FieldRule> {
   const defaults = defaultRules();
   const out: Record<string, FieldRule> = {};
-  for (const f of PERSON_FIELDS) {
-    const own = stored?.fields?.[f.id];
-    const merged: FieldRule = { ...defaults[f.id], ...own };
-    // Сохранённое правило без блоков — regex задан вручную: блоки по умолчанию к нему не относятся.
-    if (own && !('blocks' in own)) delete merged.blocks;
-    out[f.id] = merged;
-  }
+  for (const f of PERSON_FIELDS) out[f.id] = { ...defaults[f.id], ...stored?.fields?.[f.id] };
   return out;
 }
 

@@ -1,3 +1,5 @@
+import { presetBlocks, type Block } from './blocks';
+
 /*
  * Конструктор ячейки: из каких частей (блоков) она состоит, как они пишутся и в каком порядке
  * сохраняются в древо.
@@ -25,8 +27,8 @@ export interface CellKey {
   title: string;
   /** Приписки, с которыми часть пишется в таблице. Пусто — без приписки (индекс). */
   tags: KeyTag[];
-  /** Формат значения (без приписки), regex. Пусто — любое. */
-  regex: string;
+  /** Формат значения (без приписки) — блоки. Пусто — любое. */
+  format: Block[];
   required: boolean;
   /**
    * Значение может быть только в одной ветке верхнего уровня древа.
@@ -74,7 +76,7 @@ export function parseOrder(text: string, count: number): OrderResult {
 
 // ---------- Шаблоны по умолчанию ----------
 
-const NAME_RE = '^[А-ЯЁ0-9][А-Яа-яЁё0-9-]*( [А-Яа-яЁё0-9-]+)*$';
+const place = () => presetBlocks('place', true);
 const tag = (abbr: string, title: string, after?: boolean): KeyTag => (after ? { abbr, title, after } : { abbr, title });
 
 const LOCALITY_TAGS = [
@@ -107,19 +109,19 @@ const STREET_TAGS = [
 
 function addressKeys(indexRequired: boolean): CellKey[] {
   return [
-    { id: 'index', title: 'Индекс', tags: [], regex: '^\\d{6}$', required: indexRequired, single: true },
+    { id: 'index', title: 'Индекс', tags: [], format: presetBlocks('index', true), required: indexRequired, single: true },
     {
       id: 'region',
       title: 'Регион',
       tags: [tag('Респ.', 'Республика'), tag('край', 'Край', true), tag('обл.', 'Область', true), tag('АО', 'Автономный округ', true)],
-      regex: NAME_RE,
+      format: place(),
       required: true,
     },
-    { id: 'district', title: 'Район', tags: [tag('р-н', 'Район'), tag('г.о.', 'Городской округ'), tag('м.р-н', 'Муниципальный район')], regex: NAME_RE, required: false, single: true },
-    { id: 'locality', title: 'Населённый пункт', tags: LOCALITY_TAGS, regex: NAME_RE, required: true, single: true },
-    { id: 'street', title: 'Улица', tags: STREET_TAGS, regex: NAME_RE, required: false },
-    { id: 'house', title: 'Дом', tags: [tag('д.', 'Дом')], regex: '^\\d+[а-я]?(/\\d+[а-я]?)?$', required: true },
-    { id: 'flat', title: 'Квартира', tags: [tag('кв.', 'Квартира')], regex: '^\\d+[а-я]?$', required: false },
+    { id: 'district', title: 'Район', tags: [tag('р-н', 'Район'), tag('г.о.', 'Городской округ'), tag('м.р-н', 'Муниципальный район')], format: place(), required: false, single: true },
+    { id: 'locality', title: 'Населённый пункт', tags: LOCALITY_TAGS, format: place(), required: true, single: true },
+    { id: 'street', title: 'Улица', tags: STREET_TAGS, format: place(), required: false },
+    { id: 'house', title: 'Дом', tags: [tag('д.', 'Дом')], format: presetBlocks('house', true), required: true },
+    { id: 'flat', title: 'Квартира', tags: [tag('кв.', 'Квартира')], format: presetBlocks('flat', true), required: false },
   ];
 }
 
@@ -137,20 +139,20 @@ export function birthplaceTemplate(): CellTemplate {
     tree: 'Места рождения',
     separator: ' ',
     keys: [
-      { id: 'locality', title: 'Населённый пункт', tags: LOCALITY_TAGS, regex: NAME_RE, required: true },
-      { id: 'district', title: 'Район', tags: [tag('р-н', 'Район', true)], regex: NAME_RE, required: false },
+      { id: 'locality', title: 'Населённый пункт', tags: LOCALITY_TAGS, format: place(), required: true },
+      { id: 'district', title: 'Район', tags: [tag('р-н', 'Район', true)], format: place(), required: false },
       {
         id: 'region',
         title: 'Регион',
         tags: [tag('Республика', 'Республика'), tag('край', 'Край', true), tag('область', 'Область', true)],
-        regex: NAME_RE,
+        format: place(),
         required: false,
       },
       {
         id: 'country',
         title: 'Страна',
         tags: [],
-        regex: '^(Россия|Казахстан|Кыргызстан|Киргизия|Узбекистан|Таджикистан|Туркменистан|Украина|Беларусь|Белоруссия|Молдова|Армения|Азербайджан|Грузия|Монголия|Китай)$',
+        format: presetBlocks('country', true),
         required: false,
       },
     ],

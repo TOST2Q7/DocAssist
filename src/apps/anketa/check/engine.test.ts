@@ -2,8 +2,9 @@ import { describe, expect, it } from 'vitest';
 import { BaseTree, type BaseEntry, type Step } from '@/core/base/tree';
 import type { PersonRecord } from '@/core/people/people';
 import { PERSON_FIELDS } from '@/core/schema/fields';
-import { DEFAULT_EXAMPLES, resolveRules } from '../model/rules';
-import { compileRegex } from '@/shared/cell/format';
+import { upgrade } from '@/core/schema/docType';
+import { matcher, presetBlocks } from '@/shared/cell/blocks';
+import { DEFAULT_EXAMPLES, resolveRules, rulesDocType } from '../model/rules';
 import { parseCell } from '@/shared/cell/parse';
 import { applyUniqueness, checkPerson, matchWithPeople, type CheckContext } from './engine';
 
@@ -179,7 +180,7 @@ describe('примеры по умолчанию', () => {
       expect(r.example, f.label).toBe(DEFAULT_EXAMPLES[f.id]);
       expect(r.example, f.label).not.toBe('');
       if (r.kind === 'tree') expect(parseCell(r.example, r.template!).issues, f.label).toEqual([]);
-      else expect(compileRegex(r.regex).re!.test(r.example), f.label).toBe(true);
+      else expect(matcher(r.format).test(r.example), f.label).toBe(true);
     }
   });
   it('показываются при ошибке', () => {
@@ -187,5 +188,51 @@ describe('примеры по умолчанию', () => {
     v[col('person.phone')] = '123';
     const f = checkPerson(0, v, COLUMNS, ctx()).fields[col('person.phone')];
     expect(f).toMatchObject({ status: 'error', example: '8(000)000-00-00' });
+  });
+});
+
+describe('перенос правил 0.3 → 0.4 (regex → блоки)', () => {
+  const v3 = {
+    $type: 'anketa/rules',
+    $version: 3,
+    data: {
+      fields: {
+        'edu.course': { kind: 'text', regex: '^[1-11]$', example: '1', required: true, confirm: true, unique: false },
+        'edu.group': { kind: 'text', regex: '^(?=Г).+$', example: 'ГР-01', required: true, confirm: true, unique: false },
+        'person.phone': { kind: 'text', regex: '^8\\(\\d{3}\\)\\d{3}-\\d{2}-\\d{2}$', mask: '8(999)999-99-99', example: '8(000)000-00-00', required: true, confirm: true, unique: true },
+        'rso.squad': { kind: 'list', regex: '^x$', blocks: [{ type: 'text', text: '«' }, { type: 'anytext' }, { type: 'text', text: '»' }], example: '«Название»', required: true, confirm: false, unique: false },
+        'person.regAddress': {
+          kind: 'tree',
+          regex: '',
+          example: '',
+          required: true,
+          confirm: false,
+          unique: false,
+          template: { tree: 'Адреса', separator: ', ', order: '2, 1, *', keys: [{ id: 'index', title: 'Индекс', tags: [], regex: '^\\d{6}$', required: true }, { id: 'region', title: 'Регион', tags: [], regex: '^(?!x)', required: true }] },
+        },
+      },
+    },
+  };
+  const { data, migratedFrom } = upgrade(rulesDocType, v3);
+  const rules = resolveRules(data);
+  it('переводится и проверяет так, как задумано', () => {
+    expect(migratedFrom).toBe(3);
+    expect(rules['edu.course'].format).toEqual([{ type: 'number', from: 1, to: 11 }]);
+    expect(matcher(rules['edu.course'].format).test('11')).toBe(true);
+    expect(rules['person.phone'].format).toEqual(presetBlocks('phone'));
+    expect(rules['rso.squad'].format).toEqual([{ type: 'text', text: '«' }, { type: 'anytext' }, { type: 'text', text: '»' }]);
+    for (const r of Object.values(data.fields)) expect(r).not.toHaveProperty('regex');
+    expect(data.fields['person.phone']).not.toHaveProperty('mask');
+  });
+  it('сложный regex — формат по умолчанию и пометка со старым regex', () => {
+    expect(rules['edu.group'].format).toEqual(presetBlocks('group'));
+    expect(rules['edu.group'].legacy).toBe('^(?=Г).+$');
+    expect(rules['edu.group'].confirm).toBe(true);
+  });
+  it('части конструктора тоже переводятся', () => {
+    const keys = rules['person.regAddress'].template!.keys;
+    expect(keys[0].format).toEqual(presetBlocks('index', true));
+    expect(keys[1].format).toEqual(presetBlocks('place', true));
+    expect(keys[1]).not.toHaveProperty('regex');
   });
 });

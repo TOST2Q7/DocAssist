@@ -2,9 +2,10 @@ import { ArrowDown, ArrowUp, Plus, Trash2, X } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import { uid } from '@/core/util/id';
 import { ABBR_GROUPS, ABBREVIATIONS, FULL_WORDS } from '@/shared/cell/abbr';
-import { compileRegex } from '@/shared/cell/format';
+import { PART_PRESETS } from '@/shared/cell/blocks';
 import { parseCell } from '@/shared/cell/parse';
 import { parseOrder, type CellKey, type CellTemplate, type KeyTag } from '@/shared/cell/template';
+import { FormatEditor } from './BlocksEditor';
 
 /*
  * Конструктор ячейки-древа — настройка в два пункта:
@@ -128,7 +129,6 @@ export function TemplateEditor({ value, onChange, treeNames, example }: { value:
         <span className="field__label">2. Части ячейки по порядку записи</span>
         <div className="keys">
           {t.keys.map((k, i) => {
-            const re = compileRegex(k.regex);
             const level = order.order.indexOf(i);
             return (
               <div key={k.id} className="key-row card card--flat">
@@ -158,10 +158,7 @@ export function TemplateEditor({ value, onChange, treeNames, example }: { value:
                     <span className="small muted key-row__cap">В таблице:</span>
                     <TagChips tags={k.tags} onChange={(tags) => setKey(i, { tags })} />
                   </div>
-                  <div className="key-row__line">
-                    <span className="small muted key-row__cap">Формат:</span>
-                    <input className={`input input--sm mono ${re.error ? 'input--error' : ''}`} value={k.regex} onChange={(e) => setKey(i, { regex: e.target.value })} aria-label={`Формат части ${k.title}`} placeholder="regex, пусто — любое" />
-                  </div>
+                  <FormatEditor compact presets={PART_PRESETS} value={k.format} onChange={(format) => setKey(i, { format })} label={`Формат части ${k.title}`} />
                   <div className="row small">
                     <label className="check">
                       <input type="checkbox" checked={k.required} onChange={(e) => setKey(i, { required: e.target.checked })} /> обязательно
@@ -176,7 +173,7 @@ export function TemplateEditor({ value, onChange, treeNames, example }: { value:
             );
           })}
         </div>
-        <button type="button" className="btn btn--sm" style={{ alignSelf: 'flex-start' }} onClick={() => set({ keys: [...t.keys, { id: uid('k_'), title: 'Новая часть', tags: [], regex: '', required: false }] })}>
+        <button type="button" className="btn btn--sm" style={{ alignSelf: 'flex-start' }} onClick={() => set({ keys: [...t.keys, { id: uid('k_'), title: 'Новая часть', tags: [], format: [], required: false }] })}>
           <Plus size={14} /> Добавить часть
         </button>
       </div>

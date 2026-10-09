@@ -1,7 +1,8 @@
 import { BaseTree, chainText, stepText, type Step } from '@/core/base/tree';
 import { FIO_FIELDS, fioKey, fioText, type PersonRecord } from '@/core/people/people';
 import { FIELD_BY_ID } from '@/core/schema/fields';
-import { compileRegex, describeFormat, lintRegex, suggestFix } from '@/shared/cell/format';
+import { blocksMask, describeFormat, matcher } from '@/shared/cell/blocks';
+import { suggestFix } from '@/shared/cell/format';
 import { parseCell } from '@/shared/cell/parse';
 import { parseOrder } from '@/shared/cell/template';
 import { walk, type Level as WalkLevel } from '@/shared/cell/walk';
@@ -9,8 +10,8 @@ import { OTHER_RULE, treeNameOf, type FieldRule } from '../model/rules';
 import { countIssues, isReady, type FieldResult, type Issue, type PartView, type PersonResult } from '../model/types';
 
 /*
- * Проверка анкеты — только regex, списки «ключ:значение» и древо:
- *   - формат: значение должно проходить regex поля (или конструктор ячейки-древа);
+ * Проверка анкеты — только формат из блоков, списки «ключ:значение» и древо:
+ *   - формат: значение должно подходить под блоки поля (или под конструктор ячейки-древа);
  *   - список и древо: значение должно быть в базе (внутри своего родителя); нового нет — предупреждение и «Подтвердить»;
  *   - индивидуальное (паспорт, СНИЛС, телефон…): всегда предупреждение и отдельная галочка у каждого человека;
  *   - уникальное: повтор у другого человека (в таблице или в базе людей) — ошибка.
@@ -103,8 +104,7 @@ function checkList(r: FieldResult, rule: FieldRule, fieldId: string, row: Map<st
   if (rule.within) {
     const pv = row.get(rule.within)?.trim() ?? '';
     const prule = ctx.rules[rule.within];
-    const pre = prule ? compileRegex(prule.regex).re : null;
-    const ok = pv !== '' && (!pre || pre.test(pv));
+    const ok = pv !== '' && (!prule || matcher(prule.format).test(pv));
     levels.push({ k: rule.within, step: ok ? { k: rule.within, v: pv } : null });
     if (ok) parentNote = ` для «${labelOf(rule.within)}: ${pv}»`;
   }
@@ -145,13 +145,11 @@ export function checkField(fieldId: string | null, col: number, value: string, r
   if (rule.kind === 'tree' && fieldId) {
     checkTree(r, rule, fieldId, ctx);
   } else {
-    const { re, error } = compileRegex(rule.regex);
-    if (error) r.issues.push({ level: 'error', text: `В правилах ошибка в формате (regex): ${error}` });
-    else if (re && !re.test(value)) {
-      const fix = suggestFix(value, re, rule.mask);
+    const m = matcher(rule.format);
+    if (!m.test(value)) {
+      const fix = suggestFix(value, m.test, blocksMask(rule.format));
       const spaces = value !== value.trim() || /\s{2}/.test(value) ? ' — есть лишние пробелы' : '';
-      const trap = lintRegex(rule.regex).some((w) => w.startsWith('В квадратных скобках')) ? ' — похоже, ошибка в самом правиле: в [ ] каждая цифра — один символ. Исправьте в «Шаблоны и правила»: «Собрать из блоков» → «Число от … до …»' : '';
-      r.issues.push({ level: 'error', text: `Не по формату: ${describeFormat(rule.regex, rule.blocks)}${spaces}${trap}`, span: [0, value.length], fix: fix ?? undefined });
+      r.issues.push({ level: 'error', text: `Не по формату: ${describeFormat(rule.format)}${spaces}`, span: [0, value.length], fix: fix ?? undefined });
       if (fix) r.fix = fix;
     } else if (rule.kind === 'list' && fieldId) {
       checkList(r, rule, fieldId, row, ctx);

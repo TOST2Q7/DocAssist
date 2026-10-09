@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { BaseTree, removeNodeFromEntries, type BaseEntry, type Step } from '@/core/base/tree';
 import { findAbbreviations } from './abbr';
-import { compileRegex, describeFormat, fillMask, lintRegex, parseRangeRegex, PRESET_BY_ID, rangeRegex, suggestFix } from './format';
+import { blocksMask, matcher, presetBlocks } from './blocks';
+import { fillMask, suggestFix } from './format';
 import { parseCell } from './parse';
 import { birthplaceTemplate, parseOrder, registrationTemplate, residenceTemplate, type CellTemplate } from './template';
 import { walk, type Level } from './walk';
@@ -176,54 +177,45 @@ describe('древо', () => {
 });
 
 describe('формат и исправления', () => {
-  const re = (id: string) => compileRegex(PRESET_BY_ID.get(id)!.regex).re!;
-  it('телефон без скобок — ошибка, исправление по маске', () => {
+  const re = (id: string) => matcher(presetBlocks(id));
+  const fix = (v: string, id: string) => suggestFix(v, re(id).test, blocksMask(presetBlocks(id)));
+  it('телефон без скобок — ошибка, исправление по цифрам', () => {
     expect(re('phone').test('89000000000')).toBe(false);
-    expect(suggestFix('89000000000', re('phone'), '8(999)999-99-99')).toBe('8(900)000-00-00');
-    expect(suggestFix('+7 900 000 00 00', re('phone'), '8(999)999-99-99')).toBe('8(900)000-00-00');
+    expect(fix('89000000000', 'phone')).toBe('8(900)000-00-00');
+    expect(fix('+7 900 000 00 00', 'phone')).toBe('8(900)000-00-00');
   });
   it('даты: несуществующие не проходят', () => {
     expect(re('date').test('29.02.2008')).toBe(true);
     expect(re('date').test('29.02.2007')).toBe(false);
     expect(re('date').test('31.04.2007')).toBe(false);
     expect(re('date').test('00.00.0000')).toBe(false);
-    expect(suggestFix('1.1.2000', re('date'))).toBe('01.01.2000');
+    expect(fix('1.1.2000', 'date')).toBe('01.01.2000');
+    expect(fix('01012000', 'date')).toBe('01.01.2000');
+    expect(fix('1.1.00', 'date')).toBe('01.01.2000');
   });
   it('почта: значение@значение.значение строчными', () => {
     expect(re('email').test('Ivanov@example.com')).toBe(false);
-    expect(suggestFix('Ivanov@example.com', re('email'))).toBe('ivanov@example.com');
+    expect(fix('Ivanov@example.com', 'email')).toBe('ivanov@example.com');
     expect(re('email').test('ivanov@mail')).toBe(false);
   });
   it('ВК: только vk.ru и vk.com', () => {
     expect(re('vk').test('https://vk.ru/username')).toBe(true);
     expect(re('vk').test('https://vk.com/username')).toBe(true);
     expect(re('vk').test('vk.com/id1')).toBe(false);
-    expect(suggestFix('vk.com/id1', re('vk'))).toBe('https://vk.com/id1');
+    expect(fix('vk.com/id1', 'vk')).toBe('https://vk.com/id1');
   });
   it('отряд — в «ёлочках»', () => {
     expect(re('squad').test('«Название»')).toBe(true);
-    expect(suggestFix('"Название"', re('squad'))).toBe('«Название»');
-    expect(suggestFix('Название', re('squad'))).toBe('«Название»');
+    expect(fix('"Название"', 'squad')).toBe('«Название»');
+    expect(fix('Название', 'squad')).toBe('«Название»');
   });
   it('лишнее вокруг цифр убирается: «2 курс» → «2», «1234 5678 9012» → ИНН', () => {
-    expect(suggestFix('2 курс', re('course'))).toBe('2');
-    expect(suggestFix(' 2 ', re('course'))).toBe('2');
-    expect(suggestFix('1234 5678 9012', re('inn'))).toBe('123456789012');
-  });
-  it('число от … до …: [1-11] — ловушка, правильный диапазон строится сам', () => {
-    expect(new RegExp('^[1-11]$').test('6')).toBe(false);
-    expect(lintRegex('^[1-11]$')[0]).toMatch(/одна цифра.*до 11/);
-    const re = rangeRegex(1, 11);
-    expect(re).toBe('^(1|2|3|4|5|6|7|8|9|10|11)$');
-    expect(['1', '6', '10', '11'].every((v) => new RegExp(re).test(v))).toBe(true);
-    expect(['0', '12', '1 ', '01'].some((v) => new RegExp(re).test(v))).toBe(false);
-    expect(parseRangeRegex(re)).toEqual([1, 11]);
-    expect(describeFormat(re)).toBe('число от 1 до 11');
-    expect(lintRegex(re)).toEqual([]);
-    expect(lintRegex('[0-9]+')).toHaveLength(2);
+    expect(fix('2 курс', 'course')).toBe('2');
+    expect(fix(' 2 ', 'course')).toBe('2');
+    expect(fix('1234 5678 9012', 'inn')).toBe('123456789012');
   });
   it('кавычки', () => {
-    expect(suggestFix('ГБПОУ "Колледж»', re('quoted'))).toBe('ГБПОУ «Колледж»');
+    expect(fix('ГБПОУ "Колледж»', 'quoted')).toBe('ГБПОУ «Колледж»');
   });
   it('маска', () => {
     expect(fillMask('123456789 01', '999-999-999 99')).toBe('123-456-789 01');
