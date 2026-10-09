@@ -161,7 +161,7 @@ export function readTable(bytes: Uint8Array, fileName: string, sheet?: string): 
 export function writeXlsx(headers: string[], rows: string[][], sheetName = 'Лист1'): Uint8Array {
   const aoa = [headers, ...rows];
   const ws = XLSX.utils.aoa_to_sheet(aoa);
-  // Принудительно текстовый тип, чтобы Excel не превращал «000000» в 39691, а даты — в числа.
+  // Принудительно текстовый тип, чтобы Excel не превращал «012345» в 12345, а даты — в числа.
   for (const key of Object.keys(ws)) {
     if (key.startsWith('!')) continue;
     const cell = ws[key] as XLSX.CellObject;

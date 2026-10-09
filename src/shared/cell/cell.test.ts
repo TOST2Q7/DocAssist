@@ -187,7 +187,7 @@ describe('формат и исправления', () => {
     expect(re('date').test('29.02.2007')).toBe(false);
     expect(re('date').test('31.04.2007')).toBe(false);
     expect(re('date').test('00.00.0000')).toBe(false);
-    expect(suggestFix('8.3.2007', re('date'))).toBe('01.01.2000');
+    expect(suggestFix('1.1.2000', re('date'))).toBe('01.01.2000');
   });
   it('почта: значение@значение.значение строчными', () => {
     expect(re('email').test('Ivanov@example.com')).toBe(false);
@@ -209,7 +209,7 @@ describe('формат и исправления', () => {
     expect(suggestFix('ГБПОУ "Колледж»', re('quoted'))).toBe('ГБПОУ «Колледж»');
   });
   it('маска', () => {
-    expect(fillMask('123456789 01', '999-999-999 99')).toBe('000-000-000 00');
+    expect(fillMask('123456789 01', '999-999-999 99')).toBe('123-456-789 01');
     expect(fillMask('12', '9999')).toBeNull();
   });
   it('приписки в тексте', () => {

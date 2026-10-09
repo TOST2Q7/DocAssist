@@ -21,7 +21,7 @@ export const PRESETS: FormatPreset[] = [
   { id: 'phone', title: 'Телефон', regex: '^8\\(\\d{3}\\)\\d{3}-\\d{2}-\\d{2}$', example: '8(900)000-00-00', mask: '8(999)999-99-99' },
   { id: 'email', title: 'Электронная почта', regex: '^[a-z0-9._-]+@[a-z0-9-]+(\\.[a-z0-9-]+)*\\.[a-z]{2,}$', example: 'ivanov@mail.ru' },
   { id: 'snils', title: 'СНИЛС', regex: '^\\d{3}-\\d{3}-\\d{3} \\d{2}$', example: '000-000-000 00', mask: '999-999-999 99' },
-  { id: 'inn', title: 'ИНН (12 цифр)', regex: '^\\d{12}$', example: '123456789012', mask: '999999999999' },
+  { id: 'inn', title: 'ИНН (12 цифр)', regex: '^\\d{12}$', example: '000000000000', mask: '999999999999' },
   { id: 'series', title: 'Серия паспорта (4 цифры)', regex: '^\\d{4}$', example: '0000', mask: '9999' },
   { id: 'number', title: 'Номер паспорта (6 цифр)', regex: '^\\d{6}$', example: '000000', mask: '999999' },
   { id: 'code', title: 'Код подразделения', regex: '^\\d{3}-\\d{3}$', example: '190-000', mask: '999-999' },

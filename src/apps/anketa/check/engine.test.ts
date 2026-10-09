@@ -21,7 +21,7 @@ const SAMPLE = [
   'Мужской',
   '01.01.2000',
   '000-000-000 00',
-  '123456789012',
+  '000000000000',
   '8(900)000-00-00',
   'Ivanov@example.com',
   '0000',
@@ -123,19 +123,19 @@ describe('анкета: заполненная база и подтвержде�
   it('галочка снимает предупреждение только для того же значения', () => {
     const c = col('person.snils');
     expect(checkPerson(0, SAMPLE, COLUMNS, base, { [c]: SAMPLE[c] }).fields[c]).toMatchObject({ status: 'ok', confirmed: true });
-    expect(checkPerson(0, SAMPLE, COLUMNS, base, { [c]: '000-000-000 00' }).fields[c].status).toBe('warn');
+    expect(checkPerson(0, SAMPLE, COLUMNS, base, { [c]: '111-111-111 11' }).fields[c].status).toBe('warn');
   });
 });
 
 describe('уникальность и база людей', () => {
   const c = ctx();
   const other = [...SAMPLE];
-  other[col('person.lastName')] = 'Иванов';
+  other[col('person.lastName')] = 'Петров';
 
   it('повтор в таблице — ошибка у обоих', () => {
     const rows = [SAMPLE, other];
     const results = rows.map((v, i) => checkPerson(i, v, COLUMNS, c));
-    const out = applyUniqueness(results, rows, COLUMNS, ['Иванов Иван', 'Иванов Иван'], c);
+    const out = applyUniqueness(results, rows, COLUMNS, ['Иванов Иван', 'Петров Иван'], c);
     expect(out[0].fields[col('person.snils')].status).toBe('error');
     expect(out[1].fields[col('person.snils')].issues.map((i) => i.text).join()).toMatch(/Повторяется: строка 1/);
     // ФИО разные — не повтор.
@@ -144,9 +144,9 @@ describe('уникальность и база людей', () => {
 
   it('значение есть в базе людей у другого человека — ошибка; у того же — нет', () => {
     const rec = (last: string): PersonRecord => ({ id: last, source: 't', savedAt: '', fields: { 'person.lastName': last, 'person.firstName': 'Иван', 'person.middleName': 'Иванович', 'person.inn': SAMPLE[col('person.inn')] } });
-    const withOther = ctx({}, [rec('Петров')]);
+    const withOther = ctx({}, [rec('Сидоров')]);
     const out = applyUniqueness([checkPerson(0, SAMPLE, COLUMNS, withOther)], [SAMPLE], COLUMNS, [''], withOther);
-    expect(out[0].fields[col('person.inn')].issues.map((i) => i.text).join()).toMatch(/Петров Иван Иванович/);
+    expect(out[0].fields[col('person.inn')].issues.map((i) => i.text).join()).toMatch(/Сидоров Иван Иванович/);
     const withSame = ctx({}, [rec('Иванов')]);
     const out2 = applyUniqueness([checkPerson(0, SAMPLE, COLUMNS, withSame)], [SAMPLE], COLUMNS, [''], withSame);
     expect(out2[0].fields[col('person.inn')].status).toBe('warn');
@@ -157,13 +157,13 @@ describe('уникальность и база людей', () => {
       id: '1',
       source: 't',
       savedAt: '',
-      fields: { 'person.lastName': 'иванов', 'person.firstName': 'Иван', 'person.middleName': 'Иванович', 'person.inn': '123456789012', 'person.phone': '8(900)000-00-00' },
+      fields: { 'person.lastName': 'иванов', 'person.firstName': 'Иван', 'person.middleName': 'Иванович', 'person.inn': '000000000000', 'person.phone': '8(900)111-11-11' },
     };
     const m = matchWithPeople(SAMPLE, COLUMNS, [rec])!;
     expect(m.matched).toContain(col('person.inn'));
     expect(m.differ).toEqual([
       { col: col('person.lastName'), base: 'иванов' },
-      { col: col('person.phone'), base: '8(900)000-00-00' },
+      { col: col('person.phone'), base: '8(900)111-11-11' },
     ]);
     expect(matchWithPeople(other, COLUMNS, [rec])).toBeNull();
   });
