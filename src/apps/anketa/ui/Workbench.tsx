@@ -1,18 +1,22 @@
-import { ArrowLeft, BookCheck, Download, Loader2, Wand2 } from 'lucide-react';
+import { ArrowLeft, BookCheck, Download, Loader2, SearchCheck, UserPlus, Wand2 } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
+import { usePeople } from '@/core/people/people';
 import { FIELD_BY_ID, PERSON_FIELDS } from '@/core/schema/fields';
 import { baseName } from '@/core/storage/types';
+import type { TableData } from '@/core/tables/tables';
 import { plural } from '@/core/util/format';
+import { useWorkspace } from '@/core/workspace/WorkspaceContext';
 import { Alert } from '@/ui/Alert';
 import { useToast } from '@/ui/Toast';
+import { APP_ID } from '../constants';
 import { editCount } from '../model/session';
 import { ExportDialog } from './ExportDialog';
 import { FixAllDialog, type Change } from './FixAllDialog';
 import { useCheckContext, useSession, useTable, useTableModel } from './hooks';
 import { collectNewWords, NewWordsDialog } from './NewWordsDialog';
+import { PeopleCheckDialog, runPeopleCheck, type PeopleCheckResult } from './PeopleCheck';
 import { PeopleList } from './PeopleList';
-import { personChanges, PersonView } from './PersonView';
-import type { TableData } from '@/core/tables/tables';
+import { personChanges, personFields, PersonView } from './PersonView';
 
 interface Props {
   path: string;
@@ -48,10 +52,13 @@ function Loaded({ path, row, onRow, onSheet, onClose, table, size, lastModified 
   const ctx = useCheckContext();
   const s = useSession(fileName);
   const model = useTableModel(table, s.session, ctx);
+  const { workspace } = useWorkspace();
+  const people = usePeople();
   const toast = useToast();
   const [exporting, setExporting] = useState(false);
   const [fixAll, setFixAll] = useState<Change[] | null>(null);
   const [newWords, setNewWords] = useState(false);
+  const [check, setCheck] = useState<PeopleCheckResult[] | null>(null);
 
   // Запоминаем, с каким файлом связан сеанс.
   useEffect(() => {
@@ -73,14 +80,32 @@ function Loaded({ path, row, onRow, onSheet, onClose, table, size, lastModified 
 
   const unmapped = PERSON_FIELDS.filter((f) => !model.columns.includes(f.id));
   const mappedCount = model.columns.filter(Boolean).length;
-  const totals = model.results.reduce((a, r) => ({ e: a.e + r.counts.error, c: a.c + r.counts.confirm, g: a.g + r.counts.glued }), { e: 0, c: 0, g: 0 });
-  const ready = model.results.filter((r) => r.ready).length;
+  const totals = model.results.reduce((a, r) => ({ e: a.e + r.counts.error, w: a.w + r.counts.warn }), { e: 0, w: 0 });
+  const ready = model.results.filter((r) => r.ready);
   const words = useMemo(() => collectNewWords(model.results, model.names, table.headers), [model.results, model.names, table.headers]);
   const edits = editCount(s.session);
 
   const allChanges = () => model.results.flatMap((r) => personChanges(r, model.values[r.row], table.rows[r.row], table.headers, model.names[r.row]));
-
   const apply = (changes: Change[]) => s.setCells(changes.map((c) => ({ row: c.row, col: c.col, value: c.to, orig: table.rows[c.row][c.col] ?? '' })));
+
+  const checkAll = async () => {
+    if (!workspace) return;
+    if (!people.records.length) {
+      toast('База людей пока пустая — сравнивать не с чем');
+      return;
+    }
+    setCheck(await runPeopleCheck(workspace, model.results, model, people.records, s.confirmMany));
+  };
+
+  const saveReady = () => {
+    let added = 0;
+    let updated = 0;
+    for (const r of ready) {
+      if (people.save(personFields(model.values[r.row], model.columns), APP_ID) === 'added') added++;
+      else updated++;
+    }
+    toast(`База людей: добавлено ${added}, обновлено ${updated}`);
+  };
 
   if (row !== null && row >= 0 && row < model.results.length) {
     return (
@@ -95,7 +120,8 @@ function Loaded({ path, row, onRow, onSheet, onClose, table, size, lastModified 
         onSelect={(r) => onRow(r === null ? null : Math.max(0, Math.min(model.results.length - 1, r)))}
         onChangeCell={(col, value) => s.setCell(row, col, value, table.rows[row][col] ?? '')}
         onApply={apply}
-        onAccept={(col, value) => s.accept(row, col, value)}
+        onConfirm={(col, value) => s.confirm(row, col, value)}
+        onConfirmMany={s.confirmMany}
         onToggleReviewed={() => s.toggleReviewed(row)}
       />
     );
@@ -110,11 +136,10 @@ function Loaded({ path, row, onRow, onSheet, onClose, table, size, lastModified 
         <div className="spacer">
           <h2 style={{ margin: 0 }}>{fileName}</h2>
           <div className="small muted">
-            Готово {ready} из {model.results.length} · ошибок {totals.e}
-            {totals.g ? ` · слипшихся ${totals.g}` : ''} · подтвердить {totals.c} · правок {edits}
+            Готово {ready.length} из {model.results.length} · полей с ошибками {totals.e} · подтвердить {totals.w} · правок {edits}
           </div>
-          <div className="progress" role="progressbar" aria-valuemin={0} aria-valuemax={model.results.length} aria-valuenow={ready} aria-label="Готовые анкеты">
-            <div className="progress__bar" style={{ width: `${model.results.length ? (ready / model.results.length) * 100 : 0}%` }} />
+          <div className="progress" role="progressbar" aria-valuemin={0} aria-valuemax={model.results.length} aria-valuenow={ready.length} aria-label="Готовые анкеты">
+            <div className="progress__bar" style={{ width: `${model.results.length ? (ready.length / model.results.length) * 100 : 0}%` }} />
           </div>
         </div>
         {table.sheetNames.length > 1 && (
@@ -124,12 +149,21 @@ function Loaded({ path, row, onRow, onSheet, onClose, table, size, lastModified 
             ))}
           </select>
         )}
+      </div>
+      <div className="row toolbar">
         <button className="btn" onClick={() => setFixAll(allChanges())} disabled={s.readOnly}>
           <Wand2 size={16} /> Исправить у всех по шаблону
         </button>
         <button className="btn btn--confirm" onClick={() => setNewWords(true)} disabled={s.readOnly || !words.length}>
           <BookCheck size={16} /> Новые слова ({words.length})
         </button>
+        <button className="btn" onClick={checkAll} disabled={s.readOnly}>
+          <SearchCheck size={16} /> Проверить всех с актуальной информацией
+        </button>
+        <button className="btn" onClick={saveReady} disabled={!ready.length || people.readOnly} data-tip="Сохранить готовые анкеты в базу людей">
+          <UserPlus size={16} /> Готовых в базу людей ({ready.length})
+        </button>
+        <span className="spacer" />
         <button className="btn btn--primary" onClick={() => setExporting(true)}>
           <Download size={16} /> Новая таблица
         </button>
@@ -149,12 +183,13 @@ function Loaded({ path, row, onRow, onSheet, onClose, table, size, lastModified 
       <details className="card card--flat mapping">
         <summary>
           Распознано столбцов: <strong>{mappedCount}</strong> из {table.headers.length}
-          {unmapped.length > 0 && <span className="muted"> · не найдено в таблице: {unmapped.length}</span>}
+          {unmapped.length > 0 && <span className="muted"> · нет в таблице: {unmapped.length}</span>}
         </summary>
         <div className="table-wrap" style={{ marginTop: 12 }}>
           <table className="table">
             <thead>
               <tr>
+                <th>№</th>
                 <th>Столбец в таблице</th>
                 <th>Понят как</th>
               </tr>
@@ -162,8 +197,9 @@ function Loaded({ path, row, onRow, onSheet, onClose, table, size, lastModified 
             <tbody>
               {table.headers.map((h, i) => (
                 <tr key={i}>
+                  <td className="faint">{i + 1}</td>
                   <td>{h}</td>
-                  <td>{model.columns[i] ? FIELD_BY_ID.get(model.columns[i]!)?.label : <span className="faint">— (проверяются только пробелы)</span>}</td>
+                  <td>{model.columns[i] ? FIELD_BY_ID.get(model.columns[i]!)?.label : <span className="faint">— (только лишние пробелы)</span>}</td>
                 </tr>
               ))}
             </tbody>
@@ -186,6 +222,7 @@ function Loaded({ path, row, onRow, onSheet, onClose, table, size, lastModified 
         />
       )}
       {newWords && <NewWordsDialog items={words} onClose={() => setNewWords(false)} />}
+      {check && <PeopleCheckDialog results={check} model={model} headers={table.headers} onClose={() => setCheck(null)} />}
       {fixAll && (
         <FixAllDialog
           changes={fixAll}

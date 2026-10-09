@@ -55,7 +55,7 @@ export function ExportDialog({ model, headers, originals, session, fileName, she
   const build = () => {
     const rows = model.results.filter((r) => selected.has(r.row));
     const outHeaders = [...headers];
-    if (withNotes) outHeaders.push('Замечания', 'Принято как есть');
+    if (withNotes) outHeaders.push('Замечания');
     if (withChanges) outHeaders.push('Изменения');
     const out = rows.map((r) => {
       const values = [...model.values[r.row]];
@@ -63,12 +63,7 @@ export function ExportDialog({ model, headers, originals, session, fileName, she
         const label = (col: number, id: string | null) => (id && FIELD_BY_ID.get(id)?.label) || headers[col];
         values.push(
           r.fields
-            .filter((f) => !f.accepted)
-            .flatMap((f) => f.issues.map((i) => `${label(f.col, f.fieldId)}: ${i.level === 'confirm' ? 'подтвердить — ' : ''}${i.message}`))
-            .join('; '),
-          r.fields
-            .filter((f) => f.accepted && f.issues.length)
-            .map((f) => `${label(f.col, f.fieldId)}: ${f.issues.map((i) => i.message).join(', ')}`)
+            .flatMap((f) => f.issues.map((i) => `${label(f.col, f.fieldId)}: ${i.level === 'warn' ? 'подтвердить — ' : ''}${i.text}`))
             .join('; '),
         );
       }
@@ -134,7 +129,7 @@ export function ExportDialog({ model, headers, originals, session, fileName, she
         </div>
         <div className="row">
           <label className="check">
-            <input type="checkbox" checked={withNotes} onChange={(e) => setWithNotes(e.target.checked)} /> Столбцы «Замечания» и «Принято как есть»
+            <input type="checkbox" checked={withNotes} onChange={(e) => setWithNotes(e.target.checked)} /> Столбец «Замечания»
           </label>
           <label className="check">
             <input type="checkbox" checked={withChanges} onChange={(e) => setWithChanges(e.target.checked)} /> Столбец «Изменения»

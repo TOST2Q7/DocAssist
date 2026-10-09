@@ -19,18 +19,6 @@ export interface BadgeDef {
 
 export type AppStatus = 'stable' | 'beta' | 'soon';
 
-/** Справочник приложения — показывается на странице «Справочники». */
-export interface DictionaryView {
-  /** Имя справочника в рабочей папке (.docassist/dictionaries/<id>.json). */
-  id: string;
-  title: string;
-  hint?: string;
-  /** Как показать запись (по умолчанию — как строку). */
-  describe?: (value: unknown) => string;
-  /** Можно добавлять значения вручную (для справочников-строк). */
-  addable?: boolean;
-}
-
 export interface AppManifest {
   /** Постоянный идентификатор (латиница), используется в URL и в данных. Менять нельзя. */
   id: string;
@@ -50,8 +38,8 @@ export interface AppManifest {
   badges?: BadgeDef[];
   /** Порядок на главной (меньше — выше). */
   order?: number;
-  /** Справочники приложения (для страницы «Справочники»). */
-  dictionaries?: DictionaryView[];
+  /** Раздел приложения на странице «База данных» (просмотр и ручное добавление). Грузится только при открытии. */
+  baseView?: LazyExoticComponent<ComponentType>;
   /** Ленивая загрузка интерфейса (код приложения грузится только при открытии). */
   component?: LazyExoticComponent<ComponentType>;
 }

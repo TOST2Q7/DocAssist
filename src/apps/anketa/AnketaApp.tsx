@@ -1,5 +1,8 @@
+import { useCallback, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
+import BaseView from './ui/BaseView';
 import { FilePicker } from './ui/FilePicker';
+import { PasteDialog, usePasteTable } from './ui/PasteTable';
 import { RulesView } from './ui/RulesView';
 import { Workbench } from './ui/Workbench';
 import './anketa.css';
@@ -11,11 +14,19 @@ import './anketa.css';
  */
 export default function AnketaApp() {
   const [params, setParams] = useSearchParams();
-  const tab = params.get('tab') === 'rules' ? 'rules' : 'check';
+  const tabParam = params.get('tab');
+  const tab = tabParam === 'rules' || tabParam === 'base' ? tabParam : 'check';
   const file = params.get('file');
   const sheet = params.get('sheet') ?? undefined;
   const rowParam = params.get('row');
   const row = rowParam !== null && /^\d+$/.test(rowParam) ? Number(rowParam) : null;
+
+  // Ctrl+V с таблицей (вне полей ввода) — новая таблица из буфера.
+  const [pasted, setPasted] = useState<string | null>(null);
+  usePasteTable(
+    useCallback((text: string) => setPasted(text), []),
+    tab === 'check',
+  );
 
   const set = (patch: Record<string, string | null>, replace = false) => {
     const next = new URLSearchParams(params);
@@ -39,10 +50,15 @@ export default function AnketaApp() {
           <button role="tab" aria-selected={tab === 'rules'} aria-pressed={tab === 'rules'} onClick={() => set({ tab: 'rules' })}>
             Шаблоны и правила
           </button>
+          <button role="tab" aria-selected={tab === 'base'} aria-pressed={tab === 'base'} onClick={() => set({ tab: 'base' })}>
+            База
+          </button>
         </div>
       </div>
       {tab === 'rules' ? (
         <RulesView />
+      ) : tab === 'base' ? (
+        <BaseView />
       ) : file ? (
         <Workbench
           path={file}
@@ -56,7 +72,17 @@ export default function AnketaApp() {
           onClose={() => set({ file: null, row: null, sheet: null })}
         />
       ) : (
-        <FilePicker onOpen={(p) => set({ file: p, row: null })} />
+        <FilePicker onOpen={(p) => set({ file: p, row: null })} onPaste={() => setPasted('')} />
+      )}
+      {pasted !== null && (
+        <PasteDialog
+          initial={pasted}
+          onClose={() => setPasted(null)}
+          onCreated={(p) => {
+            setPasted(null);
+            set({ tab: null, file: p, row: null, sheet: null });
+          }}
+        />
       )}
     </div>
   );

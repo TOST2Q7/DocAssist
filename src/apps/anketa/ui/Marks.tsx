@@ -1,33 +1,22 @@
 import type { Issue } from '../model/types';
 import { diffWords } from './diff';
 
-/**
- * Значение с подсвеченными огрехами: лишнее и неверное — выделено, а там, где чего-то не хватает, —
- * маркер «▾» с подсказкой.
- */
+/** Значение с подсвеченными местами замечаний. Пробелы в подсвеченном видны как «·». */
 export function MarkedValue({ value, issues }: { value: string; issues: Issue[] }) {
   const spans = issues
-    .filter((i) => i.span)
-    .map((i) => ({ start: i.span![0], end: i.span![1], kind: i.category === 'glued' ? 'glued' : i.level, title: i.message }))
-    .sort((a, b) => a.start - b.start || a.end - b.end);
+    .filter((i) => i.span && i.span[1] > i.span[0] && !(i.span[0] === 0 && i.span[1] === value.length))
+    .map((i) => ({ start: i.span![0], end: i.span![1], kind: i.level, title: i.text }))
+    .sort((a, b) => a.start - b.start || b.end - a.end);
   if (!spans.length) return null;
   const parts: React.ReactNode[] = [];
   let pos = 0;
   spans.forEach((s, k) => {
     if (s.start < pos) return;
     if (s.start > pos) parts.push(value.slice(pos, s.start));
-    if (s.start === s.end) {
-      parts.push(
-        <mark key={k} className={`hl hl--gap hl--${s.kind}`} title={s.title} aria-label={s.title}>
-          ▾
-        </mark>,
-      );
-      return;
-    }
     const text = value.slice(s.start, s.end);
     parts.push(
       <mark key={k} className={`hl hl--${s.kind}`} title={s.title}>
-        {/\s/.test(text) ? text.replace(/ /g, '·').replace(/\u00a0/g, '⍽').replace(/\t/g, '→').replace(/\n/g, '↵') : text}
+        {/\s/.test(text) ? text.replace(/ /g, '·').replace(/ /g, '⍽').replace(/\t/g, '→').replace(/\n/g, '↵') : text}
       </mark>,
     );
     pos = s.end;
@@ -36,7 +25,7 @@ export function MarkedValue({ value, issues }: { value: string; issues: Issue[] 
   return <div className="marked">{parts}</div>;
 }
 
-/** Пословная разница: удалённое зачёркнуто, добавленное выделено. Короткие значения — целиком «было → стало». */
+/** Пословная разница «было → стало»: удалённое зачёркнуто, добавленное выделено. */
 export function Diff({ from, to }: { from: string; to: string }) {
   if (from.length <= 24 && to.length <= 32) {
     return (
@@ -47,13 +36,11 @@ export function Diff({ from, to }: { from: string; to: string }) {
             <span className="diff__arrow"> → </span>
           </>
         )}
-        <ins>{to}</ins>
+        <ins>{to || '(пусто)'}</ins>
       </span>
     );
   }
   const parts = diffWords(from, to);
-  // Если изменений много (например, переставлены части адреса), пословная разница нечитаема —
-  // показываем две строки: «было» и «стало».
   const changed = parts.filter((p) => p.type !== 'same' && p.text.trim()).length;
   if (changed > 4) {
     return (

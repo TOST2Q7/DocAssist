@@ -1,7 +1,7 @@
-import { createHashRouter, RouterProvider } from 'react-router-dom';
+import { createHashRouter, Navigate, RouterProvider } from 'react-router-dom';
 import { WorkspaceProvider } from '@/core/workspace/WorkspaceContext';
 import { AboutPage } from '@/pages/AboutPage';
-import { DictionariesPage } from '@/pages/DictionariesPage';
+import { BasePage } from '@/pages/BasePage';
 import { FaqPage } from '@/pages/FaqPage';
 import { HomePage } from '@/pages/HomePage';
 import { NotFoundPage } from '@/pages/NotFoundPage';
@@ -21,7 +21,8 @@ const router = createHashRouter([
       { path: '/apps/:appId/*', element: <AppHost /> },
       { path: '/workspace', element: <WorkspacePage /> },
       { path: '/variables', element: <VariablesPage /> },
-      { path: '/dictionaries', element: <DictionariesPage /> },
+      { path: '/base', element: <BasePage /> },
+      { path: '/dictionaries', element: <Navigate to="/base" replace /> },
       { path: '/outbox', element: <OutboxPage /> },
       { path: '/faq', element: <FaqPage /> },
       { path: '/about', element: <AboutPage /> },

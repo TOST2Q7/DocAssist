@@ -26,9 +26,9 @@ export function PeopleList({ model, reviewed, onOpen }: { model: TableModel; rev
         case 'ready':
           return r.ready;
         case 'errors':
-          return r.counts.error + r.counts.glued > 0;
+          return r.counts.error > 0;
         case 'confirm':
-          return r.counts.confirm > 0;
+          return r.counts.warn > 0;
         case 'todo':
           return !reviewed.includes(r.row);
         default:

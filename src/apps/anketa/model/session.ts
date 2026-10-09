@@ -1,7 +1,7 @@
 import { defineDocType } from '@/core/schema/docType';
 
 /*
- * Сеанс работы с таблицей: правки, отметки «проверено», значения, принятые «как есть».
+ * Сеанс работы с таблицей: правки, отметки «просмотрено», подтверждения индивидуальных полей.
  * Исходный файл не меняется — правки хранятся отдельно и применяются при экспорте.
  * Файл: «Проверка анкет/sessions/<имя таблицы>.json».
  */
@@ -12,31 +12,32 @@ export interface CellEdit {
   value: string;
 }
 
-export interface AcceptedValue {
-  col: number;
-  /** Принято именно это значение; если оно изменится — принятие снимается. */
-  value: string;
-  at: string;
-}
-
 export interface AnketaSession {
   source: { name: string; size: number; lastModified: number; sheet: string };
   edits: Record<string, Record<string, CellEdit>>;
   reviewed: number[];
-  accepted: Record<string, AcceptedValue[]>;
+  /**
+   * Подтверждённые индивидуальные значения: строка → столбец → значение.
+   * Подтверждение относится именно к этому значению: если оно изменится — подтверждение снимается.
+   */
+  confirmed: Record<string, Record<string, string>>;
 }
 
 export const sessionDocType = defineDocType<AnketaSession>({
   type: 'anketa/session',
-  version: 2,
+  version: 3,
   migrations: {
-    // 0.1 → строгая проверка: «скрытые предупреждения» больше не действуют — такие места нужно проверить заново.
-    1: (v1: Omit<AnketaSession, 'accepted'> & { ignored?: unknown }): AnketaSession => {
+    1: (v1: Record<string, unknown>) => {
       const { ignored: _ignored, ...rest } = v1;
       return { ...rest, accepted: {} };
     },
+    // 0.2 → 0.3: «принято как есть» больше нет — подтверждения ставятся заново по новым правилам.
+    2: (v2: Record<string, unknown>): AnketaSession => {
+      const { accepted: _accepted, ...rest } = v2;
+      return { ...(rest as Omit<AnketaSession, 'confirmed'>), confirmed: {} };
+    },
   },
-  empty: () => ({ source: { name: '', size: 0, lastModified: 0, sheet: '' }, edits: {}, reviewed: [], accepted: {} }),
+  empty: () => ({ source: { name: '', size: 0, lastModified: 0, sheet: '' }, edits: {}, reviewed: [], confirmed: {} }),
 });
 
 export function sessionPath(folder: string, fileName: string): string {

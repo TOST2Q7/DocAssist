@@ -5,6 +5,7 @@ import { useRegisterSW } from 'virtual:pwa-register/react';
 import { APP_VERSION, IS_SINGLE_FILE } from '@/core/config';
 import { useUpdateCheck } from '@/core/update/checkUpdate';
 import { Header } from './Header';
+import { VarSuggest } from './VarSuggest';
 
 /** Версия-файл сама не обновляется — предлагаем скачать новую со страницы релизов. */
 function FileUpdateBanner() {
@@ -59,6 +60,7 @@ export function Layout() {
       <main className="main">
         <Outlet />
       </main>
+      <VarSuggest />
       <footer className="footer">
         <div className="footer__inner">
           <span>DocAssist v{APP_VERSION} · работает локально, данные не покидают устройство</span>

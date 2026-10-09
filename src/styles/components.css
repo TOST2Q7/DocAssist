@@ -478,6 +478,8 @@ a.app-card:hover {
 .input,
 .select {
   width: 100%;
+  max-width: 100%;
+  text-overflow: ellipsis;
   min-height: var(--tap);
   padding: 7px 10px;
   border: 1px solid var(--border-strong);
@@ -793,73 +795,7 @@ details.faq .faq__answer {
 }
 
 /* ---------- Поле с переменными ---------- */
-.var-input {
-  position: relative;
-  width: 100%;
-}
-.var-input__row {
-  display: flex;
-  gap: 4px;
-  align-items: flex-start;
-}
-.var-input__resolve {
-  margin-top: 4px;
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  flex-wrap: wrap;
-}
-.var-input__menu {
-  position: absolute;
-  z-index: 60;
-  right: 0;
-  top: calc(100% + 4px);
-  width: min(420px, 100%);
-  min-width: 260px;
-  max-height: 320px;
-  overflow-y: auto;
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  box-shadow: var(--shadow-l);
-  padding: 4px;
-}
-.var-input__hint {
-  padding: 6px 8px;
-}
-.var-input__opt {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  width: 100%;
-  border: 0;
-  background: transparent;
-  text-align: left;
-  padding: 8px;
-  border-radius: var(--radius-s);
-  cursor: pointer;
-}
-.var-input__opt:hover {
-  background: var(--surface-2);
-}
-.var-input__opt-main {
-  flex: 1;
-  min-width: 0;
-  display: flex;
-  flex-direction: column;
-}
-.var-input__opt-label {
-  font-size: 0.8rem;
-  color: var(--text-muted);
-}
-.var-input__opt-value {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.var-input__opt-key {
-  color: var(--text-faint);
-}
+
 
 /* Подсказки у правого края шапки не должны вылезать за экран. */
 @media (hover: hover) {
@@ -1018,4 +954,95 @@ a.chip:hover {
   font-weight: 600;
   color: var(--text-muted);
   padding: 0 4px;
+}
+
+/* ---------- База данных ---------- */
+.abbr-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: 12px;
+  margin-top: 12px;
+}
+.list__item--col {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 8px;
+}
+.link-btn {
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  padding: 0;
+  cursor: pointer;
+}
+
+/* ---------- Подсказки переменных (Ctrl+Пробел) ---------- */
+.var-suggest {
+  position: fixed;
+  z-index: 300;
+  max-height: 260px;
+  display: flex;
+  flex-direction: column;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-l);
+  overflow: hidden;
+}
+.var-suggest__head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px;
+  color: var(--text-muted);
+  border-bottom: 1px solid var(--border);
+}
+.var-suggest__list {
+  overflow-y: auto;
+  padding: 4px;
+}
+.var-suggest__opt {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 0 8px;
+  width: 100%;
+  padding: 6px 8px;
+  border: 0;
+  border-radius: var(--radius-s);
+  background: transparent;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.var-suggest__opt.is-active {
+  background: var(--brand-soft);
+}
+.var-suggest__label {
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.var-suggest__value {
+  grid-column: 1;
+  color: var(--text-muted);
+  font-size: 0.85rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.var-suggest__key {
+  grid-column: 2;
+  grid-row: 1 / 3;
+  align-self: center;
+  color: var(--text-faint);
+}
+.var-suggest__empty {
+  padding: 10px;
+}
+.var-suggest__foot {
+  padding: 4px 10px;
+  border-top: 1px solid var(--border);
 }

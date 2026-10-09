@@ -1,4 +1,4 @@
-import { FileSpreadsheet, RefreshCw, Upload } from 'lucide-react';
+import { ClipboardPaste, FileSpreadsheet, RefreshCw, Upload } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { TABLE_EXTENSIONS } from '@/core/tables/formats';
 import { extName, type FsEntry } from '@/core/storage/types';
@@ -8,7 +8,7 @@ import { useWorkspace, useWorkspaceRevision } from '@/core/workspace/WorkspaceCo
 import { useToast } from '@/ui/Toast';
 import { APP_FOLDER } from '../constants';
 
-export function FilePicker({ onOpen }: { onOpen: (path: string) => void }) {
+export function FilePicker({ onOpen, onPaste }: { onOpen: (path: string) => void; onPaste: () => void }) {
   const { workspace } = useWorkspace();
   const toast = useToast();
   const rev = useWorkspaceRevision();
@@ -48,11 +48,15 @@ export function FilePicker({ onOpen }: { onOpen: (path: string) => void }) {
         <div className="spacer">
           <h2 style={{ margin: 0 }}>Выберите таблицу с анкетами</h2>
           <p className="muted small" style={{ margin: 0 }}>
-            Таблицы из рабочей папки (Excel или CSV). Одна строка — один человек, столбцы — его данные.
+            Таблицы из рабочей папки (Excel или CSV). Одна строка — один человек, столбцы — его данные. Можно вставить строки
+            из Excel через <kbd>Ctrl</kbd>+<kbd>V</kbd>.
           </p>
         </div>
         <button className="btn" onClick={() => setManual((n) => n + 1)} aria-label="Обновить список" data-tip="Обновить список">
           <RefreshCw size={16} />
+        </button>
+        <button className="btn" onClick={onPaste}>
+          <ClipboardPaste size={16} /> Вставить из буфера
         </button>
         <button className="btn btn--primary" onClick={upload}>
           <Upload size={16} /> Добавить таблицу
@@ -64,7 +68,7 @@ export function FilePicker({ onOpen }: { onOpen: (path: string) => void }) {
         <div className="card empty stack">
           <FileSpreadsheet size={32} className="faint" style={{ margin: '0 auto' }} />
           <div>В рабочей папке пока нет таблиц.</div>
-          <div className="small">Нажмите «Добавить таблицу» или положите файл .xlsx/.csv в папку на компьютере.</div>
+          <div className="small">Нажмите «Добавить таблицу», вставьте строки через Ctrl+V или положите файл .xlsx/.csv в папку на компьютере.</div>
         </div>
       ) : (
         <div className="list">

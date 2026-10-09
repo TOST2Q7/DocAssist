@@ -1,22 +1,16 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { addDictEntry, useDictionary } from '@/core/dictionaries/dictionaries';
-import { ENUMS } from '@/core/schema/enums';
-import { matchColumns } from '@/core/schema/fields';
+import { addPath, useBaseTrees } from '@/core/base/base';
+import { usePeople } from '@/core/people/people';
+import { looksLikeHeader, matchColumns, PERSON_FIELDS } from '@/core/schema/fields';
 import { readTable, type TableData } from '@/core/tables/tables';
 import { getDocStore, useDocStore } from '@/core/workspace/docStore';
 import { useWorkspace, useWorkspaceRevision } from '@/core/workspace/WorkspaceContext';
 import type { Workspace } from '@/core/workspace/workspace';
-import { TYPE_BY_ID } from '@/shared/address/addrTypes';
-import { ADDRESS_DICT, useGazetteer } from '@/shared/address/useGazetteer';
-import { toSimple } from '@/shared/check/dates';
-import type { IssueAction } from '@/shared/check/types';
 import { APP_FOLDER, APP_ID } from '../constants';
-import { buildContext, type CheckContext, type UserDictionaries } from '../check/context';
-import { DICT, type IssuedByEntry, type SpecialtyEntry } from '../check/dicts';
-import { applyTableLevel, checkPerson, findDuplicates } from '../check/engine';
-import { DEFAULT_RULES, rulesDocType, type AnketaRules } from '../model/rules';
+import { applyUniqueness, checkPerson, type CheckContext } from '../check/engine';
+import { allTreeNames, resolveRules, rulesDocType, type FieldRule } from '../model/rules';
 import { rowValues, sessionDocType, sessionPath, type AnketaSession, type CellEdit } from '../model/session';
-import type { PersonResult } from '../model/types';
+import type { BaseAddition, PersonResult } from '../model/types';
 
 // ---------- Правила ----------
 
@@ -25,91 +19,57 @@ export function useRules() {
   const store = useMemo(() => (workspace ? getDocStore(workspace, `${APP_FOLDER}/rules.json`, rulesDocType) : null), [workspace]);
   const state = useDocStore(store);
   const data = state?.data;
-  const rules = useMemo<AnketaRules>(() => ({ ...DEFAULT_RULES, ...data, addressTemplates: { ...DEFAULT_RULES.addressTemplates, ...data?.addressTemplates } }), [data]);
+  const rules = useMemo(() => resolveRules(data), [data]);
   return {
     rules,
     loaded: !!state?.loaded,
     readOnly: !!state?.tooNew || !!state?.broken,
     error: state?.error,
-    update(patch: Partial<AnketaRules>) {
-      store?.update((d) => ({ ...d, ...patch }));
+    /** Сохранить правило поля целиком. */
+    setField(fieldId: string, rule: FieldRule) {
+      store?.update((d) => ({ ...d, fields: { ...d.fields, [fieldId]: rule } }));
+    },
+    /** Вернуть правило поля по умолчанию. */
+    resetField(fieldId: string) {
+      store?.update((d) => {
+        const fields = { ...d.fields };
+        delete fields[fieldId];
+        return { ...d, fields };
+      });
+    },
+    isCustom(fieldId: string) {
+      return !!data?.fields?.[fieldId];
     },
   };
 }
 
-// ---------- Справочники ----------
+// ---------- Контекст проверки ----------
 
-/** Все пользовательские справочники, которыми пользуется проверка. Список постоянный — хуки в цикле безопасны. */
-export function useUserDictionaries(): UserDictionaries {
-  const enumDicts = ENUMS.map((e) => ({ id: e.id, d: useDictionary<string>(e.id) }));
-  const firstNames = useDictionary<string>(DICT.firstNames);
-  const patronymics = useDictionary<string>(DICT.patronymics);
-  const emailDomains = useDictionary<string>(DICT.emailDomains);
-  const issuedBy = useDictionary<IssuedByEntry>(DICT.issuedBy);
-  const specialties = useDictionary<SpecialtyEntry>(DICT.specialties);
-  const institutions = useDictionary<string>(DICT.institutions);
-  const squads = useDictionary<string>(DICT.squads);
-  const deps = [
-    ...enumDicts.flatMap((x) => [x.d.entries, x.d.hidden]),
-    firstNames.entries,
-    patronymics.entries,
-    emailDomains.entries,
-    issuedBy.entries,
-    specialties.entries,
-    institutions.entries,
-    squads.entries,
-  ];
-  return useMemo(() => {
-    const values = <V,>(d: { entries: { value: V }[] }) => d.entries.map((e) => e.value);
-    const enums: UserDictionaries['enums'] = {};
-    for (const { id, d } of enumDicts) enums[id] = { values: values(d), hidden: d.hidden };
-    return {
-      enums,
-      firstNames: values(firstNames),
-      patronymics: values(patronymics),
-      emailDomains: values(emailDomains),
-      issuedBy: values(issuedBy),
-      specialties: values(specialties),
-      institutions: values(institutions),
-      squads: values(squads),
-    };
-  }, deps);
-}
-
-export function useCheckContext(): CheckContext {
-  const { gaz } = useGazetteer();
+export function useCheckContext(): CheckContext & { loaded: boolean } {
   const { rules } = useRules();
-  const user = useUserDictionaries();
-  return useMemo(() => buildContext(gaz, rules, user, toSimple(new Date())), [gaz, rules, user]);
+  const names = useMemo(() => allTreeNames(rules), [rules]);
+  const base = useBaseTrees(names);
+  const people = usePeople();
+  return useMemo(() => ({ rules, trees: base.trees, people: people.records, loaded: base.loaded && people.loaded }), [rules, base, people.records, people.loaded]);
 }
 
-/** Подтвердить значение: добавить в справочник (и в «Предложения в базу»). */
-export async function applyDictionaryAction(ws: Workspace, a: IssueAction): Promise<boolean> {
-  switch (a.kind) {
-    case 'add-word':
-      return addDictEntry(ws, a.dict, a.value, { label: a.label, source: APP_ID });
-    case 'add-postal':
-      return addDictEntry(ws, ADDRESS_DICT, { op: 'postal', path: a.path, index: a.index }, { label: a.label, source: APP_ID });
-    case 'add-place': {
-      if (!a.type || !a.parentPath) return false;
-      return addDictEntry(ws, ADDRESS_DICT, { name: a.name, type: a.type, parentPath: a.parentPath }, { label: actionLabel(a), source: APP_ID });
-    }
-  }
+/** Подтвердить: добавить путь в базу (и в «Предложения в базу»). */
+export function confirmBase(ws: Workspace, b: BaseAddition): Promise<boolean> {
+  return addPath(ws, b.tree, b.path, { source: APP_ID });
 }
-
-/** Можно ли подтвердить одним нажатием (без уточнений в диалоге). */
-export const isDirectAction = (a: IssueAction) => a.kind !== 'add-place' || (!!a.type && !!a.parentPath);
-
-export function actionLabel(a: IssueAction): string {
-  if (a.kind !== 'add-place') return a.label;
-  const t = a.type ? TYPE_BY_ID.get(a.type) : undefined;
-  return `${t ? `${t.short} ` : ''}${a.name}${a.parentLabel ? ` → ${a.parentLabel}` : ''}`;
-}
-
-export const actionKey = (a: IssueAction) =>
-  JSON.stringify(a.kind === 'add-place' ? [a.kind, a.name, a.type, a.parentPath] : a.kind === 'add-postal' ? [a.kind, a.index, a.path] : [a.kind, a.dict, a.value]);
 
 // ---------- Таблица ----------
+
+/**
+ * Если у таблицы нет строки заголовков (первая строка — уже данные), столбцы понимаются по порядку формы:
+ * «Отметка времени», «Регион», «Фамилия»…
+ */
+export function withFormHeaders(table: TableData): TableData {
+  if (!table.headers.length || looksLikeHeader(table.headers)) return table;
+  const headers = table.headers.map((_, i) => PERSON_FIELDS[i]?.label ?? `Столбец ${i + 1}`);
+  const first = table.headers.map((h) => (/^Столбец \d+$/.test(h) ? '' : h));
+  return { ...table, headers, rows: [first, ...table.rows], sourceRows: [(table.sourceRows[0] ?? 2) - 1, ...table.sourceRows] };
+}
 
 export type TableState =
   | { status: 'loading' }
@@ -128,7 +88,7 @@ export function useTable(path: string, sheet?: string): TableState {
       try {
         const [bytes, stat] = await Promise.all([workspace.readBytes(path), workspace.stat(path)]);
         if (!bytes) throw new Error('Файл не найден в рабочей папке');
-        const table = readTable(bytes, path, sheet);
+        const table = withFormHeaders(readTable(bytes, path, sheet));
         if (alive) setState({ status: 'ready', table, size: stat?.size ?? bytes.byteLength, lastModified: stat?.lastModified ?? 0 });
       } catch (e) {
         if (alive) setState({ status: 'error', message: e instanceof Error ? e.message : String(e) });
@@ -158,6 +118,13 @@ export function useSession(fileName: string) {
       if (Object.keys(rowEdits).length) edits[row] = rowEdits;
       else delete edits[row];
     };
+    const setConfirmed = (confirmed: AnketaSession['confirmed'], row: number, col: number, value: string | null) => {
+      const r = { ...(confirmed[row] ?? {}) };
+      if (value === null) delete r[col];
+      else r[col] = value;
+      if (Object.keys(r).length) confirmed[row] = r;
+      else delete confirmed[row];
+    };
     return {
       session,
       loaded: !!state?.loaded,
@@ -183,16 +150,23 @@ export function useSession(fileName: string) {
       toggleReviewed(row: number) {
         update((s) => ({ ...s, reviewed: s.reviewed.includes(row) ? s.reviewed.filter((r) => r !== row) : [...s.reviewed, row] }));
       },
-      /** Принять значение поля «как есть» (value = null — снять принятие). */
-      accept(row: number, col: number, value: string | null) {
+      /** Галочка «проверено, верно» у индивидуального значения (null — снять). */
+      confirm(row: number, col: number, value: string | null) {
         update((s) => {
-          const list = (s.accepted[row] ?? []).filter((a) => a.col !== col);
-          if (value !== null) list.push({ col, value, at: new Date().toISOString() });
-          return { ...s, accepted: { ...s.accepted, [row]: list } };
+          const confirmed = { ...s.confirmed };
+          setConfirmed(confirmed, row, col, value);
+          return { ...s, confirmed };
+        });
+      },
+      confirmMany(items: { row: number; col: number; value: string }[]) {
+        update((s) => {
+          const confirmed = { ...s.confirmed };
+          for (const i of items) setConfirmed(confirmed, i.row, i.col, i.value);
+          return { ...s, confirmed };
         });
       },
       resetAll() {
-        update((s) => ({ ...s, edits: {}, reviewed: [], accepted: {} }));
+        update((s) => ({ ...s, edits: {}, reviewed: [], confirmed: {} }));
       },
     };
   }, [session, state?.loaded, state?.tooNew, state?.broken, state?.error, store]);
@@ -220,22 +194,22 @@ export function useTableModel(table: TableData, session: AnketaSession, ctx: Che
   const edits = session.edits;
   const values = useMemo(() => table.rows.map((r, i) => rowValues(r, { ...session, edits }, i)), [table.rows, edits]); // session меняется вместе с edits
   const names = useMemo(() => values.map((v) => personName(v, columns)), [values, columns]);
+  const confirmed = session.confirmed;
 
   const base = useMemo(
     () =>
       values.map((v, row) => {
-        const key = v.join('\u0001');
+        const conf = confirmed[row] ?? {};
+        const key = v.join('\u0001') + '\u0002' + JSON.stringify(conf);
         const hit = cache.current.get(row);
         if (hit && hit.key === key && hit.ctx === ctx) return hit.res;
-        const res = checkPerson(row, v, columns, ctx);
+        const res = checkPerson(row, v, columns, ctx, conf);
         cache.current.set(row, { key, ctx, res });
         return res;
       }),
-    [values, columns, ctx],
+    [values, columns, ctx, confirmed],
   );
 
-  const dupes = useMemo(() => findDuplicates(values, columns, names), [values, columns, names]);
-  const results = useMemo(() => base.map((r) => applyTableLevel(r, dupes.get(r.row), session.accepted[r.row])), [base, dupes, session.accepted]);
-
+  const results = useMemo(() => applyUniqueness(base, values, columns, names, ctx), [base, values, columns, names, ctx]);
   return { columns, values, names, results };
 }

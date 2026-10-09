@@ -9,7 +9,7 @@ import { VAR_KEY_RE, VAR_KINDS, type Variable, type VarKind } from './types';
 /*
  * Глобальные переменные — значения, которые часто нужны в разных местах
  * (ФИО, телефон, адрес штаба…). Хранятся в рабочей папке: .docassist/variables.json.
- * В любом поле ввода можно написать <ключ> — он заменится значением.
+ * В любом поле ввода по Ctrl+Пробел появляется список переменных (src/ui/VarSuggest.tsx).
  */
 
 export interface VariablesDoc {

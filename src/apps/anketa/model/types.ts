@@ -1,56 +1,74 @@
-import type { FieldCheck, Issue } from '@/shared/check/types';
+import type { Step } from '@/core/base/tree';
 
-export type { Issue, IssueAction, Level, Category } from '@/shared/check/types';
+export type Level = 'error' | 'warn';
 
-export interface FieldResult extends FieldCheck {
-  fieldId: string | null;
+export interface Issue {
+  level: Level;
+  text: string;
+  /** Подсветить часть значения [начало, конец). */
+  span?: [number, number];
+  /** Исправление — новое значение поля. */
+  fix?: string;
+  /** Ошибка снимается подтверждением («это другое место»). */
+  confirmable?: boolean;
+  /** Напоминание «поставьте галочку» у индивидуального значения. */
+  person?: boolean;
+}
+
+export interface BaseAddition {
+  tree: string;
+  path: Step[];
+  /** «Респ. Хакасия → 655700 → с. Аскиз». */
+  label: string;
+  /** Сколько первых частей пути уже есть в базе. */
+  known: number;
+}
+
+/** Часть ячейки-древа для показа: «Регион: Респ. Хакасия — есть в базе». */
+export interface PartView {
+  title: string;
+  text: string;
+  /** known — есть в базе; new — нет; error — ошибка; off — в древо не сохраняется; plain — с базой не сверялось (сначала исправить ошибки). */
+  state: 'known' | 'new' | 'error' | 'off' | 'plain';
+}
+
+export type FieldStatus = 'ok' | 'error' | 'warn';
+
+export interface FieldResult {
   col: number;
+  fieldId: string | null;
   value: string;
-  /** Значение принято человеком «как есть» (замечания не считаются). */
-  accepted?: boolean;
+  status: FieldStatus;
+  issues: Issue[];
+  /** Правильная запись целиком, если она отличается от написанного. */
+  fix?: string;
+  /** Что даёт подтверждение: галочка у человека и/или добавление в базу. */
+  confirm?: { person: boolean; base?: BaseAddition };
+  /** Значение подтверждено у этого человека (галочка). */
+  confirmed: boolean;
+  /** Части ячейки-древа. */
+  parts?: PartView[];
 }
 
 export interface Counts {
-  /** Ошибки (кроме «слипшихся»). */
   error: number;
-  /** Слипшиеся слова — отдельный счётчик. */
-  glued: number;
   /** Требуют подтверждения. */
-  confirm: number;
-  /** Поля, принятые «как есть». */
-  accepted: number;
+  warn: number;
 }
 
 export interface PersonResult {
   row: number;
   fields: FieldResult[];
   counts: Counts;
-  /** Анкета полностью проверена: нет ни ошибок, ни неподтверждённого. */
+  /** Анкета готова: нет ни ошибок, ни неподтверждённого. */
   ready: boolean;
 }
 
 export function countIssues(fields: FieldResult[]): Counts {
-  const c: Counts = { error: 0, glued: 0, confirm: 0, accepted: 0 };
-  for (const f of fields) {
-    if (f.accepted) {
-      if (f.issues.length) c.accepted++;
-      continue;
-    }
-    for (const i of f.issues) {
-      if (i.level === 'confirm') c.confirm++;
-      else if (i.category === 'glued') c.glued++;
-      else c.error++;
-    }
-  }
-  return c;
+  return {
+    error: fields.filter((f) => f.status === 'error').length,
+    warn: fields.filter((f) => f.status === 'warn').length,
+  };
 }
 
-export const isReady = (c: Counts) => c.error + c.glued + c.confirm === 0;
-
-export function fieldStatus(f: FieldResult): 'ok' | 'error' | 'glued' | 'confirm' | 'accepted' {
-  if (!f.issues.length) return 'ok';
-  if (f.accepted) return 'accepted';
-  if (f.issues.some((i: Issue) => i.level === 'error' && i.category !== 'glued')) return 'error';
-  if (f.issues.some((i: Issue) => i.category === 'glued')) return 'glued';
-  return 'confirm';
-}
+export const isReady = (c: Counts) => c.error + c.warn === 0;

@@ -1,21 +1,19 @@
-import { BookCheck, ChevronLeft, ChevronRight, Eye, EyeOff, List, Star, Wand2 } from 'lucide-react';
+import { BookCheck, ChevronLeft, ChevronRight, Eye, EyeOff, List, SearchCheck, Star, UserPlus, Wand2 } from 'lucide-react';
 import { useMemo, useState } from 'react';
-import { FIELD_BY_ID } from '@/core/schema/fields';
-import { useDictionary } from '@/core/dictionaries/dictionaries';
+import { usePeople } from '@/core/people/people';
+import { FIELD_BY_ID, PERSON_FIELDS } from '@/core/schema/fields';
 import type { VarKind } from '@/core/variables/types';
-import { AddPlaceDialog } from '@/shared/address/ui/AddPlaceDialog';
-import { useGazetteer, ADDRESS_DICT } from '@/shared/address/useGazetteer';
 import { useWorkspace } from '@/core/workspace/WorkspaceContext';
 import { SaveVarDialog } from '@/ui/SaveVarDialog';
 import { useToast } from '@/ui/Toast';
 import { APP_ID } from '../constants';
-import { fieldStatus, type IssueAction, type PersonResult } from '../model/types';
+import type { FieldResult, PersonResult } from '../model/types';
 import { Counters } from './Counters';
 import { FieldRow } from './FieldRow';
 import { FixAllDialog, type Change } from './FixAllDialog';
-import { GROUPS, KNOWN_GROUP_FIELDS } from './groups';
-import { actionLabel, applyDictionaryAction, isDirectAction, type TableModel } from './hooks';
+import { confirmBase, type TableModel } from './hooks';
 import { collectNewWords, NewWordsDialog } from './NewWordsDialog';
+import { PeopleCheckDialog, runPeopleCheck, type PeopleCheckResult } from './PeopleCheck';
 import { PersonPicker } from './PersonPicker';
 
 interface Props {
@@ -30,55 +28,69 @@ interface Props {
   onSelect: (row: number | null) => void;
   onChangeCell: (col: number, value: string) => void;
   onApply: (changes: Change[]) => void;
-  onAccept: (col: number, value: string | null) => void;
+  onConfirm: (col: number, value: string | null) => void;
+  onConfirmMany: (items: { row: number; col: number; value: string }[]) => void;
   onToggleReviewed: () => void;
 }
 
-/** Исправления «по шаблону» для анкеты: каждое поле, у которого правильная форма отличается от написанного. */
+/** Исправления для анкеты: каждое поле, у которого есть правильная запись, отличная от написанного. */
 export function personChanges(result: PersonResult, values: string[], originals: string[], headers: string[], who?: string): Change[] {
   return result.fields
-    .filter((f) => !f.accepted && f.canonical !== undefined && f.canonical !== values[f.col])
-    .map((f) => ({ row: result.row, col: f.col, from: values[f.col], to: f.canonical!, orig: originals[f.col] ?? '', who, fieldId: f.fieldId, header: headers[f.col] }));
+    .filter((f) => f.fix !== undefined && f.fix !== values[f.col])
+    .map((f) => ({ row: result.row, col: f.col, from: values[f.col], to: f.fix!, orig: originals[f.col] ?? '', who, fieldId: f.fieldId, header: headers[f.col] }));
 }
 
-type AddPlaceAction = Extract<IssueAction, { kind: 'add-place' }>;
+/** Значения строки на общем языке полей — для базы людей. */
+export function personFields(values: string[], columns: (string | null)[]): Record<string, string> {
+  const out: Record<string, string> = {};
+  columns.forEach((id, i) => id && (out[id] = values[i] ?? ''));
+  return out;
+}
 
-export function PersonView({ model, headers, originals, row, reviewed, readOnly, fileLabel, onSelect, onChangeCell, onApply, onAccept, onToggleReviewed }: Props) {
+export function PersonView({ model, headers, originals, row, reviewed, readOnly, fileLabel, onSelect, onChangeCell, onApply, onConfirm, onConfirmMany, onToggleReviewed }: Props) {
   const result = model.results[row];
   const values = model.values[row];
   const name = model.names[row] || `Строка ${row + 1}`;
   const [onlyIssues, setOnlyIssues] = useState(false);
   const [fixAll, setFixAll] = useState<Change[] | null>(null);
   const [newWords, setNewWords] = useState(false);
+  const [check, setCheck] = useState<PeopleCheckResult | null>(null);
   const [saveVar, setSaveVar] = useState<{ value: string; label: string; kind: VarKind; key?: string } | null>(null);
-  const [addPlace, setAddPlace] = useState<AddPlaceAction | null>(null);
-  const { gaz } = useGazetteer();
   const { workspace } = useWorkspace();
+  const people = usePeople();
   const toast = useToast();
-  const placeDict = useDictionary(ADDRESS_DICT);
 
-  const byField = useMemo(() => new Map(result.fields.filter((f) => f.fieldId).map((f) => [f.fieldId!, f])), [result]);
-  const extraCols = result.fields.filter((f) => !f.fieldId || !KNOWN_GROUP_FIELDS.has(f.fieldId));
-  const groups = [...GROUPS.map((g) => ({ ...g, items: g.fields.map((id) => byField.get(id)).filter(Boolean) as typeof result.fields })), { id: 'other', title: 'Прочие столбцы', fields: [], items: extraCols }].filter(
-    (g) => g.items.length,
-  );
   const isReviewed = reviewed.includes(row);
   const changes = personChanges(result, values, originals, headers);
   const words = useMemo(() => collectNewWords([result], model.names, headers), [result, model.names, headers]);
 
-  const onAction = async (a: IssueAction) => {
+  const confirmField = async (f: FieldResult) => {
     if (!workspace) return;
-    if (!isDirectAction(a) && a.kind === 'add-place') {
-      setAddPlace(a);
-      return;
-    }
-    const added = await applyDictionaryAction(workspace, a);
-    toast(added ? `Подтверждено: ${actionLabel(a)}` : 'Это значение уже есть в справочнике');
+    if (f.confirm?.base) await confirmBase(workspace, f.confirm.base);
+    if (f.confirm?.person) onConfirm(f.col, values[f.col] ?? '');
+    toast(f.confirm?.base ? `Добавлено в базу «${f.confirm.base.tree}»` : 'Подтверждено');
+  };
+
+  const checkActual = async () => {
+    if (!workspace) return;
+    const r = await runPeopleCheck(workspace, [result], model, people.records, onConfirmMany);
+    setCheck(r[0]);
+  };
+
+  const saveToPeople = () => {
+    const how = people.save(personFields(values, model.columns), APP_ID);
+    toast(how === 'added' ? `${name}: сохранено в базу людей` : `${name}: запись в базе людей обновлена`);
   };
 
   const fio = [values[model.columns.indexOf('person.lastName')], values[model.columns.indexOf('person.firstName')], values[model.columns.indexOf('person.middleName')]]
     .filter(Boolean)
     .join(' ');
+
+  const numOf = (f: FieldResult) => {
+    const i = f.fieldId ? PERSON_FIELDS.findIndex((x) => x.id === f.fieldId) : -1;
+    return i >= 0 ? i + 1 : f.col + 1;
+  };
+  const visible = onlyIssues ? result.fields.filter((f) => f.status !== 'ok') : result.fields;
 
   return (
     <div className="stack">
@@ -112,6 +124,12 @@ export function PersonView({ model, headers, originals, row, reviewed, readOnly,
           <button className="btn btn--confirm" onClick={() => setNewWords(true)} disabled={readOnly || !words.length}>
             <BookCheck size={16} /> Новые слова ({words.length})
           </button>
+          <button className="btn" onClick={checkActual} disabled={readOnly || !fio} data-tip="Найти человека в базе людей по ФИО и отметить совпавшие поля">
+            <SearchCheck size={16} /> Проверить с актуальной информацией
+          </button>
+          <button className="btn" onClick={saveToPeople} disabled={!result.ready || people.readOnly} data-tip={result.ready ? 'Сохранить проверенные данные в базу людей' : 'Сначала исправьте и подтвердите всё'}>
+            <UserPlus size={16} /> В базу людей
+          </button>
           <button className="btn" onClick={() => setSaveVar({ value: fio, label: `ФИО: ${fio}`, kind: 'fio' })} disabled={!fio}>
             <Star size={16} /> ФИО в переменные
           </button>
@@ -122,44 +140,35 @@ export function PersonView({ model, headers, originals, row, reviewed, readOnly,
         </div>
       </div>
 
-      <div className="groups">
-        {groups.map((g) => {
-          const items = onlyIssues ? g.items.filter((f) => fieldStatus(f) !== 'ok' && fieldStatus(f) !== 'accepted') : g.items;
-          if (!items.length) return null;
+      <div className="fields">
+        {visible.map((f) => {
+          const def = f.fieldId ? FIELD_BY_ID.get(f.fieldId) : undefined;
           return (
-            <section key={g.id} className="card group">
-              <h3 className="group__title">{g.title}</h3>
-              <div className="stack">
-                {items.map((f) => {
-                  const def = f.fieldId ? FIELD_BY_ID.get(f.fieldId) : undefined;
-                  return (
-                    <FieldRow
-                      key={f.col}
-                      field={f}
-                      def={def}
-                      header={headers[f.col]}
-                      original={originals[f.col] ?? ''}
-                      current={values[f.col] ?? ''}
-                      readOnly={readOnly}
-                      onChange={(v) => onChangeCell(f.col, v)}
-                      onAccept={(on) => onAccept(f.col, on ? (values[f.col] ?? '') : null)}
-                      onAction={onAction}
-                      onCopy={() => navigator.clipboard?.writeText(values[f.col] ?? '').then(() => toast('Скопировано'))}
-                      onSaveVar={() =>
-                        setSaveVar({
-                          value: values[f.col] ?? '',
-                          label: `${def?.label ?? headers[f.col]}${fio ? ` (${fio})` : ''}`,
-                          kind: def?.varKind ?? 'text',
-                        })
-                      }
-                    />
-                  );
-                })}
-              </div>
-            </section>
+            <div key={f.col} className="card field-card">
+              <FieldRow
+                num={numOf(f)}
+                field={f}
+                def={def}
+                header={headers[f.col]}
+                original={originals[f.col] ?? ''}
+                current={values[f.col] ?? ''}
+                readOnly={readOnly}
+                onChange={(v) => onChangeCell(f.col, v)}
+                onConfirmPerson={(on) => onConfirm(f.col, on ? (values[f.col] ?? '') : null)}
+                onConfirmBase={() => void confirmField(f)}
+                onCopy={() => navigator.clipboard?.writeText(values[f.col] ?? '').then(() => toast('Скопировано'))}
+                onSaveVar={() =>
+                  setSaveVar({
+                    value: values[f.col] ?? '',
+                    label: `${def?.label ?? headers[f.col]}${fio ? ` (${fio})` : ''}`,
+                    kind: def?.varKind ?? 'text',
+                  })
+                }
+              />
+            </div>
           );
         })}
-        {onlyIssues && result.ready && <div className="card empty">Анкета соответствует шаблонам — замечаний нет.</div>}
+        {onlyIssues && !visible.length && <div className="card empty">Замечаний нет — анкета готова.</div>}
       </div>
 
       <div className="row" style={{ justifyContent: 'space-between' }}>
@@ -192,19 +201,8 @@ export function PersonView({ model, headers, originals, row, reviewed, readOnly,
         />
       )}
       {newWords && <NewWordsDialog items={words} onClose={() => setNewWords(false)} />}
+      {check && <PeopleCheckDialog results={[check]} headers={headers} model={model} onClose={() => setCheck(null)} />}
       {saveVar && <SaveVarDialog initial={{ ...saveVar, source: `Проверка анкет: ${fileLabel}` }} onClose={() => setSaveVar(null)} />}
-      {addPlace && (
-        <AddPlaceDialog
-          gaz={gaz}
-          initial={{ name: addPlace.name, type: addPlace.type, parentPath: addPlace.parentPath }}
-          onClose={() => setAddPlace(null)}
-          onSave={(entry, label) => {
-            void placeDict.add(entry, { label, source: APP_ID });
-            toast(`Добавлено в справочник: ${label}`);
-            setAddPlace(null);
-          }}
-        />
-      )}
     </div>
   );
 }

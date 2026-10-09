@@ -1,69 +1,67 @@
 import { useMemo, useState } from 'react';
+import { stepText } from '@/core/base/tree';
 import { FIELD_BY_ID } from '@/core/schema/fields';
 import { useWorkspace } from '@/core/workspace/WorkspaceContext';
 import { Modal } from '@/ui/Modal';
 import { useToast } from '@/ui/Toast';
-import type { IssueAction, PersonResult } from '../model/types';
-import { DICT_TITLES } from '../check/dicts';
-import { ENUM_BY_ID } from '@/core/schema/enums';
-import { actionKey, actionLabel, applyDictionaryAction, isDirectAction } from './hooks';
+import type { BaseAddition, PersonResult } from '../model/types';
+import { confirmBase } from './hooks';
 
 /*
- * «Новые слова» — всё, что встретилось в анкетах, но ещё не подтверждено:
- * сёла, улицы, индексы, имена, отряды, учебные заведения, подразделения…
- * Человек проверяет список и подтверждает — значения попадают в справочник
- * (и в «Предложения в базу»), после чего такие анкеты проходят проверку.
+ * «Новые слова» — всё, чего ещё нет в базе: места, улицы, должности, отряды, учебные заведения…
+ * Человек проверяет список и подтверждает — значения попадают в базу (и в «Предложения в базу»).
+ * Индивидуальные значения (паспорт, СНИЛС, телефон…) сюда не попадают: их подтверждают у каждого отдельно.
  */
 
-interface Item {
+export interface NewWord {
   key: string;
-  action: IssueAction;
-  label: string;
-  section: string;
+  base: BaseAddition;
   where: string[];
 }
 
-function sectionOf(a: IssueAction): string {
-  if (a.kind === 'add-place') return a.type === 'ul' || (a.type && ['prkt', 'per', 'br', 'sh', 'nab', 'pl', 'proezd', 'tup', 'alleya', 'trakt', 'liniya'].includes(a.type)) ? 'Улицы' : 'Населённые пункты';
-  if (a.kind === 'add-postal') return 'Почтовые индексы';
-  return DICT_TITLES[a.dict] ?? ENUM_BY_ID.get(a.dict)?.title ?? a.dict;
-}
-
-/** Порядок добавления: сначала крупное (сёла), потом то, что внутри (улицы, индексы), потом слова. */
-const order = (a: IssueAction) => (a.kind === 'add-place' ? (a.parentPath?.length ?? 0) : a.kind === 'add-postal' ? 50 : 100);
-
-export function collectNewWords(results: PersonResult[], names: string[], headers: string[]): Item[] {
-  const map = new Map<string, Item>();
+export function collectNewWords(results: PersonResult[], names: string[], headers: string[]): NewWord[] {
+  const map = new Map<string, NewWord>();
   for (const r of results) {
     for (const f of r.fields) {
-      if (f.accepted) continue;
-      for (const i of f.issues) {
-        if (!i.action) continue;
-        const key = actionKey(i.action);
-        const where = `${names[r.row] || `строка ${r.row + 1}`} — ${(f.fieldId && FIELD_BY_ID.get(f.fieldId)?.label) || headers[f.col]}`;
-        const item = map.get(key);
-        if (item) {
-          if (!item.where.includes(where)) item.where.push(where);
-        } else map.set(key, { key, action: i.action, label: actionLabel(i.action), section: sectionOf(i.action), where: [where] });
-      }
+      const base = f.confirm?.base;
+      if (!base || f.confirm?.person) continue;
+      if (f.issues.some((i) => i.level === 'error')) continue;
+      const key = JSON.stringify([base.tree, base.path.map((s) => [s.k, s.v])]);
+      const where = `${names[r.row] || `строка ${r.row + 1}`} — ${(f.fieldId && FIELD_BY_ID.get(f.fieldId)?.label) || headers[f.col]}`;
+      const item = map.get(key);
+      if (item) {
+        if (!item.where.includes(where)) item.where.push(where);
+      } else map.set(key, { key, base, where: [where] });
     }
   }
   return [...map.values()];
 }
 
-export function NewWordsDialog({ items, onClose }: { items: Item[]; onClose: () => void }) {
+/** Путь с отмеченными новыми частями. */
+export function PathLabel({ base }: { base: BaseAddition }) {
+  return (
+    <span className="path">
+      {base.path.map((s, i) => (
+        <span key={i}>
+          {i > 0 && <span className="faint"> → </span>}
+          <span className={i >= base.known ? 'path__new' : 'path__known'}>{stepText(s)}</span>
+        </span>
+      ))}
+    </span>
+  );
+}
+
+export function NewWordsDialog({ items, onClose }: { items: NewWord[]; onClose: () => void }) {
   const { workspace } = useWorkspace();
   const toast = useToast();
-  const direct = items.filter((i) => isDirectAction(i.action));
-  const manual = items.filter((i) => !isDirectAction(i.action));
   const [off, setOff] = useState<Set<string>>(new Set());
   const [busy, setBusy] = useState(false);
   const sections = useMemo(() => {
-    const m = new Map<string, Item[]>();
-    for (const i of direct) m.set(i.section, [...(m.get(i.section) ?? []), i]);
+    const m = new Map<string, NewWord[]>();
+    for (const i of items) m.set(i.base.tree, [...(m.get(i.base.tree) ?? []), i]);
     return [...m.entries()];
-  }, [direct]);
-  const chosen = direct.filter((i) => !off.has(i.key));
+  }, [items]);
+  const chosen = items.filter((i) => !off.has(i.key));
 
   const toggle = (key: string) =>
     setOff((s) => {
@@ -77,11 +75,10 @@ export function NewWordsDialog({ items, onClose }: { items: Item[]; onClose: () 
     if (!workspace) return;
     setBusy(true);
     let added = 0;
-    for (const i of [...chosen].sort((a, b) => order(a.action) - order(b.action))) {
-      if (await applyDictionaryAction(workspace, i.action)) added++;
-    }
+    // Сначала полные пути (с индексом), чтобы короткие (без индекса) легли внутрь них, а не рядом.
+    for (const i of [...chosen].sort((a, b) => b.base.path.length - a.base.path.length)) if (await confirmBase(workspace, i.base)) added++;
     setBusy(false);
-    toast(`Подтверждено и добавлено в справочник: ${added}`);
+    toast(`Добавлено в базу: ${added}`);
     onClose();
   };
 
@@ -102,18 +99,19 @@ export function NewWordsDialog({ items, onClose }: { items: Item[]; onClose: () 
       }
     >
       {items.length === 0 ? (
-        <p className="muted">Всё уже есть в справочниках.</p>
+        <p className="muted">Всё уже есть в базе.</p>
       ) : (
         <div className="stack">
           <p className="small muted" style={{ margin: 0 }}>
-            Проверьте каждое значение по документам или карте. После подтверждения оно станет образцом: такие же значения в
-            других анкетах будут проходить проверку, а с ошибками — нет. Подтверждённое попадёт в «Предложения в базу».
+            Проверьте каждое значение по документам или карте. После подтверждения оно попадёт в базу: такие же значения в
+            других анкетах будут проходить проверку. Новые части выделены. Индивидуальные значения (паспорт, телефон…) здесь не
+            показываются — их подтверждают галочкой у каждого человека.
           </p>
           <div className="row small">
             <button className="btn btn--sm btn--ghost" onClick={() => setOff(new Set())}>
               Выбрать всё
             </button>
-            <button className="btn btn--sm btn--ghost" onClick={() => setOff(new Set(direct.map((i) => i.key)))}>
+            <button className="btn btn--sm btn--ghost" onClick={() => setOff(new Set(items.map((i) => i.key)))}>
               Снять всё
             </button>
           </div>
@@ -124,7 +122,7 @@ export function NewWordsDialog({ items, onClose }: { items: Item[]; onClose: () 
                 <label key={i.key} className="fix-item">
                   <input type="checkbox" checked={!off.has(i.key)} onChange={() => toggle(i.key)} />
                   <div className="fix-item__body">
-                    <div>{i.label}</div>
+                    <PathLabel base={i.base} />
                     <div className="small faint">
                       {i.where.slice(0, 3).join('; ')}
                       {i.where.length > 3 ? ` и ещё ${i.where.length - 3}` : ''}
@@ -134,19 +132,6 @@ export function NewWordsDialog({ items, onClose }: { items: Item[]; onClose: () 
               ))}
             </section>
           ))}
-          {manual.length > 0 && (
-            <section className="stack stack--s">
-              <strong className="small">Нужно уточнить в анкете ({manual.length})</strong>
-              <p className="small muted" style={{ margin: 0 }}>
-                Для этих слов не хватает данных (тип или где находится) — откройте анкету и нажмите «Добавить в справочник…».
-              </p>
-              {manual.map((i) => (
-                <div key={i.key} className="small">
-                  {i.label} <span className="faint">— {i.where[0]}</span>
-                </div>
-              ))}
-            </section>
-          )}
         </div>
       )}
     </Modal>

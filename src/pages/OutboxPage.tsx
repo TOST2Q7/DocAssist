@@ -1,6 +1,7 @@
 import { Check, Copy, Download, ExternalLink, Trash2, Upload } from 'lucide-react';
 import { useMemo, useState } from 'react';
-import { addDictEntry } from '@/core/dictionaries/dictionaries';
+import { addPath } from '@/core/base/base';
+import type { Step } from '@/core/base/tree';
 import {
   contributionsAsText,
   contributionsFileDocType,
@@ -67,12 +68,20 @@ function OutboxView() {
     }
   };
 
-  const applyImported = () => {
+  const isPath = (e: unknown): e is Step[] => Array.isArray(e) && e.length > 0 && e.every((s) => s && typeof s.k === 'string' && typeof s.v === 'string');
+
+  const applyImported = async () => {
     if (!workspace || !imported) return;
+    let added = 0;
+    let skipped = 0;
     for (const item of imported.items) {
-      addDictEntry(workspace, item.dictionary, item.entry, { label: item.label, source: item.source, origin: 'import', share: false });
+      if (!isPath(item.entry)) {
+        skipped++;
+        continue;
+      }
+      if (await addPath(workspace, item.dictionary, item.entry, { source: 'import', share: false })) added++;
     }
-    toast(`Добавлено в справочники: ${imported.items.length}`);
+    toast(`Добавлено в базу: ${added}${skipped ? ` · пропущено записей старого формата: ${skipped}` : ''}`);
     setImported(null);
   };
 
@@ -81,7 +90,7 @@ function OutboxView() {
       <div className="stack">
         {outbox.items.length === 0 ? (
           <div className="card empty">
-            Пока пусто. Когда вы добавите в справочник новое слово (например, село или улицу), оно появится здесь.
+            Пока пусто. Когда вы подтвердите или добавите в базу новое значение (например, село или улицу), оно появится здесь.
           </div>
         ) : (
           <div className="list">
@@ -138,7 +147,7 @@ function OutboxView() {
             </div>
             <p className="small muted" style={{ margin: 0 }}>
               Файл или текст можно переслать в Telegram, ВКонтакте или по почте. «Через GitHub» откроет готовое сообщение
-              (нужен аккаунт GitHub). Отправляются только слова справочников — никаких данных анкет.
+              (нужен аккаунт GitHub). Отправляются только значения базы (места, улицы, списки) — никаких персональных данных анкет.
             </p>
           </div>
         )}
@@ -147,7 +156,7 @@ function OutboxView() {
       <section className="stack">
         <h2>Для разработчика: принять предложения</h2>
         <p className="muted small" style={{ margin: 0 }}>
-          Загрузите файл, присланный пользователем, — новые слова добавятся в ваши справочники.
+          Загрузите файл, присланный пользователем, — новые значения добавятся в вашу базу.
         </p>
         <div>
           <button className="btn" onClick={loadFile}>
@@ -167,8 +176,8 @@ function OutboxView() {
               ))}
             </ul>
             <div className="row">
-              <button className="btn btn--primary" onClick={applyImported}>
-                Добавить в мои справочники
+              <button className="btn btn--primary" onClick={() => void applyImported()}>
+                Добавить в мою базу
               </button>
               <button className="btn btn--ghost" onClick={() => setImported(null)}>
                 Отмена
@@ -186,7 +195,7 @@ export function OutboxPage() {
     <div className="page page--narrow">
       <div className="page-head">
         <h1>Предложения в общую базу</h1>
-        <p>Новые слова и понятия, которые вы добавили в справочники. Перешлите их разработчику — они войдут в следующую версию для всех.</p>
+        <p>Новые значения, которые вы подтвердили или добавили в базу. Перешлите их разработчику — они войдут в следующую версию для всех.</p>
       </div>
       <Alert kind="info">
         Сейчас пересылка делается вручную (файл, текст или GitHub), потому что приложение работает без сервера. Позже можно

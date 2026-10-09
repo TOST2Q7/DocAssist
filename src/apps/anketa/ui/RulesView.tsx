@@ -1,349 +1,273 @@
-import { Copy, Pencil, Trash2 } from 'lucide-react';
+import { ChevronDown, ChevronRight, RotateCcw } from 'lucide-react';
 import { useMemo, useState } from 'react';
-import { Link } from 'react-router-dom';
-import { FIELD_BY_ID } from '@/core/schema/fields';
-import { uid } from '@/core/util/id';
-import { checkAddress } from '@/shared/address/check';
-import { BUILTIN_TEMPLATES, type AddressParts, type AddressTemplate, type PartRule } from '@/shared/address/template';
-import { LEVEL_LABELS, LEVEL_ORDER, type Level } from '@/shared/address/types';
-import { useGazetteer } from '@/shared/address/useGazetteer';
-import { maskDigits, showMask } from '@/shared/check/mask';
+import { FIELD_BY_ID, PERSON_FIELDS } from '@/core/schema/fields';
+import { ABBR_GROUPS, ABBREVIATIONS } from '@/shared/cell/abbr';
+import { compileRegex, PRESETS, suggestFix } from '@/shared/cell/format';
+import { parseOrder, registrationTemplate } from '@/shared/cell/template';
 import { Alert } from '@/ui/Alert';
-import { Modal } from '@/ui/Modal';
-import { PHONE_MASKS, allTemplates } from '../model/rules';
+import { allTreeNames, defaultRules, KIND_LABELS, treeNameOf, type FieldKind, type FieldRule } from '../model/rules';
 import { useRules } from './hooks';
+import { TemplateEditor } from './TemplateEditor';
 
-const SAMPLE = 'Респ. хакасия ул.Ленина, село Аскиз, дом 1 кв 5, 655700';
-const SAMPLE_BIRTH = 'республика хакасия, аскизский район, село Аскиз';
-const sampleFor = (t: AddressTemplate) => (t.order === 'small-to-big' ? SAMPLE_BIRTH : SAMPLE);
-const ADDRESS_FIELDS = ['person.regAddress', 'person.factAddress', 'person.birthPlace'];
+const label = (id: string) => FIELD_BY_ID.get(id)?.label ?? id;
 
-function Preview({ template, sample }: { template: AddressTemplate; sample: string }) {
-  const { gaz } = useGazetteer();
-  const r = useMemo(() => checkAddress(sample, template, gaz), [sample, template, gaz]);
-  return <div className="preview">{r.canonical || '—'}</div>;
-}
-
-const RULES: [PartRule, string][] = [
-  ['required', 'обязательно'],
-  ['optional', 'если есть'],
-  ['never', 'не указывать'],
-];
-
-const PART_LABELS: Record<keyof AddressParts, string> = {
-  index: 'Индекс',
-  country: 'Страна «Россия»',
-  region: 'Регион',
-  district: 'Район (для сёл)',
-  street: 'Улица',
-  house: 'Дом',
-  building: 'Корпус / строение',
-  flat: 'Квартира',
-};
-
-const PART_CHOICES: Record<keyof AddressParts, PartRule[]> = {
-  index: ['required', 'optional', 'never'],
-  country: ['required', 'optional', 'never'],
-  region: ['required', 'optional'],
-  district: ['required', 'optional', 'never'],
-  street: ['required', 'optional', 'never'],
-  house: ['required', 'optional', 'never'],
-  building: ['optional', 'never'],
-  flat: ['optional', 'never'],
-};
-
-function TemplateEditor({ initial, onSave, onClose }: { initial: AddressTemplate; onSave: (t: AddressTemplate) => void; onClose: () => void }) {
-  const [t, setT] = useState<AddressTemplate>(initial);
-  const [sample, setSample] = useState(sampleFor(initial));
-  const set = <K extends keyof AddressTemplate>(k: K, v: AddressTemplate[K]) => setT((x) => ({ ...x, [k]: v }));
-  const setPart = (k: keyof AddressParts, v: PartRule) => setT((x) => ({ ...x, parts: { ...x.parts, [k]: v } as AddressParts }));
-  const setAffix = (level: Level, key: 'prefix' | 'suffix', v: string) => setT((x) => ({ ...x, affixes: { ...x.affixes, [level]: { ...x.affixes?.[level], [key]: v } } }));
-
+function Summary({ id, rule, rules }: { id: string; rule: FieldRule; rules: Record<string, FieldRule> }) {
+  const tree = treeNameOf(id, rules);
   return (
-    <Modal
-      title={initial.name ? `Шаблон: ${initial.name}` : 'Новый шаблон'}
-      wide
-      onClose={onClose}
-      footer={
-        <>
-          <button className="btn" onClick={onClose}>
-            Отмена
-          </button>
-          <button className="btn btn--primary" disabled={!t.name.trim()} onClick={() => onSave(t)}>
-            Сохранить
-          </button>
-        </>
-      }
-    >
-      <div className="stack">
-        <label className="field">
-          <span className="field__label">Название</span>
-          <input className="input" value={t.name} onChange={(e) => set('name', e.target.value)} />
-        </label>
-        <div className="grid-3">
-          <label className="field">
-            <span className="field__label">Порядок</span>
-            <select className="select" value={t.order} onChange={(e) => set('order', e.target.value as AddressTemplate['order'])}>
-              <option value="big-to-small">От региона к дому</option>
-              <option value="small-to-big">От населённого пункта к стране</option>
-            </select>
-          </label>
-          <label className="field">
-            <span className="field__label">Разделитель</span>
-            <select className="select" value={t.separator} onChange={(e) => set('separator', e.target.value)}>
-              <option value=", ">запятая и пробел «, »</option>
-              <option value=" ">пробел « »</option>
-              <option value="; ">точка с запятой «; »</option>
-            </select>
-          </label>
-          <label className="field">
-            <span className="field__label">Типы</span>
-            <select className="select" value={t.typeStyle} onChange={(e) => set('typeStyle', e.target.value as AddressTemplate['typeStyle'])}>
-              <option value="short">Сокращённо: ул., д., с.</option>
-              <option value="full">Полностью: улица, дом, село</option>
-            </select>
-          </label>
-          <label className="field">
-            <span className="field__label">Регион</span>
-            <select className="select" value={t.regionStyle} onChange={(e) => set('regionStyle', e.target.value as AddressTemplate['regionStyle'])}>
-              <option value="short">Респ. Хакасия</option>
-              <option value="full">Республика Хакасия</option>
-            </select>
-          </label>
-          <label className="field">
-            <span className="field__label">Буква в номере дома</span>
-            <select className="select" value={t.houseLetter} onChange={(e) => set('houseLetter', e.target.value as AddressTemplate['houseLetter'])}>
-              <option value="lower">строчная: 12а</option>
-              <option value="upper">прописная: 12А</option>
-            </select>
-          </label>
-        </div>
-
-        <fieldset className="fieldset">
-          <legend>Части адреса</legend>
-          <div className="grid-3">
-            {(Object.keys(PART_LABELS) as (keyof AddressParts)[]).map((k) => (
-              <label key={k} className="field">
-                <span className="field__label">{PART_LABELS[k]}</span>
-                <select className="select" value={t.parts[k]} onChange={(e) => setPart(k, e.target.value as PartRule)}>
-                  {RULES.filter(([r]) => PART_CHOICES[k].includes(r)).map(([r, l]) => (
-                    <option key={r} value={r}>
-                      {l}
-                    </option>
-                  ))}
-                </select>
-              </label>
-            ))}
-          </div>
-        </fieldset>
-
-        <fieldset className="fieldset">
-          <legend>Что обязательно должно быть в справочнике</legend>
-          <div className="row">
-            {([
-              ['locality', 'Населённый пункт'],
-              ['street', 'Улица'],
-              ['index', 'Индекс населённого пункта'],
-            ] as const).map(([k, l]) => (
-              <label key={k} className="check">
-                <input type="checkbox" checked={t.verify[k]} onChange={(e) => set('verify', { ...t.verify, [k]: e.target.checked })} /> {l}
-              </label>
-            ))}
-          </div>
-          <p className="small muted" style={{ margin: 0 }}>
-            Всё, чего нет в справочнике, нужно один раз подтвердить — после этого значение проходит проверку во всех анкетах.
-          </p>
-        </fieldset>
-
-        <details>
-          <summary className="small">Приставки и окончания частей (необязательно)</summary>
-          <div className="table-wrap" style={{ marginTop: 8 }}>
-            <table className="table">
-              <thead>
-                <tr>
-                  <th>Часть</th>
-                  <th>Приставка</th>
-                  <th>Окончание</th>
-                </tr>
-              </thead>
-              <tbody>
-                {LEVEL_ORDER.map((l) => (
-                  <tr key={l}>
-                    <td>{LEVEL_LABELS[l]}</td>
-                    <td>
-                      <input className="input" value={t.affixes?.[l]?.prefix ?? ''} onChange={(e) => setAffix(l, 'prefix', e.target.value)} aria-label={`Приставка: ${LEVEL_LABELS[l]}`} />
-                    </td>
-                    <td>
-                      <input className="input" value={t.affixes?.[l]?.suffix ?? ''} onChange={(e) => setAffix(l, 'suffix', e.target.value)} aria-label={`Окончание: ${LEVEL_LABELS[l]}`} />
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </details>
-        <label className="field">
-          <span className="field__label">Проверить на примере</span>
-          <input className="input" value={sample} onChange={(e) => setSample(e.target.value)} />
-        </label>
-        <Preview template={t} sample={sample} />
-      </div>
-    </Modal>
+    <span className="rule-sum">
+      <span className={`badge badge--kind-${rule.kind}`}>{KIND_LABELS[rule.kind]}</span>
+      {rule.kind === 'tree' && rule.template && (
+        <span className="small muted">
+          {parseOrder(rule.template.order, rule.template.keys.length)
+            .order.map((i) => rule.template!.keys[i]?.title)
+            .join(' → ')}
+        </span>
+      )}
+      {rule.kind !== 'tree' && rule.example && <span className="small muted mono">{rule.example}</span>}
+      {rule.kind === 'list' && tree && <span className="small faint">база «{tree}»</span>}
+      {rule.within && <span className="chip small">внутри «{label(rule.within)}»</span>}
+      {!rule.required && <span className="chip small">можно пусто</span>}
+      {(rule.confirm || rule.unique) && <span className="chip chip--confirm small">галочка у каждого</span>}
+      {rule.unique && <span className="chip chip--unique small">уникальное{rule.uniqueWith?.length ? ` (с: ${rule.uniqueWith.map(label).join(', ')})` : ''}</span>}
+    </span>
   );
 }
 
-function MaskInput({ label, value, digits, onChange, disabled, hint }: { label: string; value: string; digits?: number; onChange: (v: string) => void; disabled: boolean; hint: string }) {
-  const n = maskDigits(value);
-  const bad = digits !== undefined && n !== digits;
+function RegexTester({ rule }: { rule: FieldRule }) {
+  const [v, setV] = useState('');
+  const { re, error } = compileRegex(rule.regex);
+  if (error) return <span className="field__error">Ошибка в regex: {error}</span>;
+  if (!v) return <input className="input" value={v} onChange={(e) => setV(e.target.value)} placeholder="Проверить значение…" />;
+  const ok = !re || re.test(v);
+  const fix = !ok && re ? suggestFix(v, re, rule.mask) : null;
   return (
-    <label className="field">
-      <span className="field__label">{label}</span>
-      <input className={`input ${bad ? 'input--error' : ''}`} value={value} disabled={disabled} onChange={(e) => onChange(e.target.value)} />
-      {bad ? <span className="field__error">Нужно ровно {digits} девяток (цифр), а сейчас {n}</span> : <span className="field__hint">{hint.replace('{mask}', showMask(value))}</span>}
-    </label>
+    <div className="stack stack--s">
+      <input className={`input ${ok ? '' : 'input--error'}`} value={v} onChange={(e) => setV(e.target.value)} placeholder="Проверить значение…" />
+      <span className="small" style={{ color: ok ? 'var(--success)' : 'var(--error)' }}>
+        {ok ? 'Подходит' : 'Не подходит'}
+        {fix && (
+          <span className="muted">
+            {' '}
+            · исправление: <span className="mono">{fix}</span>
+          </span>
+        )}
+      </span>
+    </div>
   );
 }
 
-export function RulesView() {
-  const { rules, update, readOnly } = useRules();
-  const [editing, setEditing] = useState<AddressTemplate | null>(null);
-  const templates = allTemplates(rules);
+function FieldEditor({ id, initial, rules, custom, onSave, onReset, onClose }: { id: string; initial: FieldRule; rules: Record<string, FieldRule>; custom: boolean; onSave: (r: FieldRule) => void; onReset: () => void; onClose: () => void }) {
+  const [r, setR] = useState<FieldRule>(() => structuredClone(initial));
+  const set = (patch: Partial<FieldRule>) => setR((x) => ({ ...x, ...patch }));
+  const { error } = compileRegex(r.regex);
+  const preset = PRESETS.find((p) => p.regex === r.regex);
+  const listFields = PERSON_FIELDS.filter((f) => f.id !== id && rules[f.id]?.kind === 'list');
+  const treeNames = allTreeNames(rules);
+  const orderError = r.kind === 'tree' && r.template ? parseOrder(r.template.order, r.template.keys.length).error : undefined;
 
-  const saveTemplate = (t: AddressTemplate) => {
-    const exists = rules.customTemplates.some((x) => x.id === t.id);
-    update({ customTemplates: exists ? rules.customTemplates.map((x) => (x.id === t.id ? t : x)) : [...rules.customTemplates, t] });
-    setEditing(null);
+  const setKind = (kind: FieldKind) => {
+    if (kind === 'tree' && !r.template) set({ kind, template: { ...registrationTemplate(), tree: label(id) } });
+    else set({ kind });
   };
 
   return (
-    <div className="stack stack--l">
-      {readOnly && <Alert kind="warning">Настройки сохранены более новой версией DocAssist — изменить их можно после обновления.</Alert>}
-      <Alert kind="info">
-        Проверка строгая: значение верно, только если в точности совпадает с шаблоном. Любое отличие — ошибка, а всё, что нельзя
-        проверить автоматически (новое село, улица, имя, отряд), нужно один раз подтвердить.
-      </Alert>
+    <div className="rule-editor stack">
+      <div className="field">
+        <span className="field__label">Как проверять</span>
+        <div className="segmented" role="group">
+          {(Object.keys(KIND_LABELS) as FieldKind[]).map((k) => (
+            <button type="button" key={k} aria-pressed={r.kind === k} onClick={() => setKind(k)}>
+              {KIND_LABELS[k]}
+            </button>
+          ))}
+        </div>
+        <span className="field__hint">
+          {r.kind === 'text' && 'Значение должно проходить формат (regex). В базе не хранится.'}
+          {r.kind === 'list' && 'Формат (regex) + значение должно быть в базе («ключ:значение»). Новое — предупреждение и «Подтвердить».'}
+          {r.kind === 'tree' && 'Ячейка дробится на части по конструктору, части сверяются с древом — каждая внутри предыдущей.'}
+        </span>
+      </div>
 
-      <section className="stack">
-        <h2>Шаблоны адресов</h2>
-        <div className="grid-3">
-          {ADDRESS_FIELDS.map((id) => (
-            <label key={id} className="field">
-              <span className="field__label">{FIELD_BY_ID.get(id)?.label}</span>
+      {r.kind !== 'tree' && (
+        <>
+          <div className="grid-2">
+            <label className="field">
+              <span className="field__label">Готовый формат</span>
               <select
                 className="select"
-                value={rules.addressTemplates[id]}
-                disabled={readOnly}
-                onChange={(e) => update({ addressTemplates: { ...rules.addressTemplates, [id]: e.target.value } })}
+                value={preset?.id ?? ''}
+                onChange={(e) => {
+                  const p = PRESETS.find((x) => x.id === e.target.value);
+                  if (p) set({ regex: p.regex, example: p.example, mask: p.mask });
+                }}
               >
-                {templates.map((t) => (
-                  <option key={t.id} value={t.id}>
-                    {t.name}
+                <option value="">— свой —</option>
+                {PRESETS.map((p) => (
+                  <option key={p.id} value={p.id}>
+                    {p.title}
+                    {p.example ? ` — ${p.example}` : ''}
                   </option>
                 ))}
               </select>
             </label>
-          ))}
-        </div>
-        <div className="list">
-          {templates.map((t) => (
-            <div key={t.id} className="list__item">
-              <div className="list__main">
-                <div className="list__title">
-                  {t.name} {t.builtin ? <span className="badge">встроенный</span> : <span className="badge badge--beta">ваш</span>}
-                </div>
-                <div className="small muted">Пример исправления: «{sampleFor(t)}» →</div>
-                <Preview template={t} sample={sampleFor(t)} />
-              </div>
-              <button
-                className="icon-btn"
-                data-tip="Копировать"
-                aria-label={`Копировать шаблон ${t.name}`}
-                disabled={readOnly}
-                onClick={() => setEditing({ ...structuredClone(t), id: uid('tpl_'), name: `${t.name} (копия)`, builtin: false })}
-              >
-                <Copy size={18} />
-              </button>
-              {!t.builtin && (
-                <>
-                  <button className="icon-btn" data-tip="Изменить" aria-label={`Изменить шаблон ${t.name}`} disabled={readOnly} onClick={() => setEditing(t)}>
-                    <Pencil size={18} />
-                  </button>
-                  <button
-                    className="icon-btn"
-                    data-tip="Удалить"
-                    aria-label={`Удалить шаблон ${t.name}`}
-                    disabled={readOnly}
-                    onClick={() => {
-                      if (!confirm(`Удалить шаблон «${t.name}»?`)) return;
-                      const fallback: Record<string, string> = {};
-                      for (const [k, v] of Object.entries(rules.addressTemplates)) fallback[k] = v === t.id ? (BUILTIN_TEMPLATES.find((b) => b.id === k.split('.')[1])?.id ?? 'residence') : v;
-                      update({ customTemplates: rules.customTemplates.filter((x) => x.id !== t.id), addressTemplates: fallback });
-                    }}
-                  >
-                    <Trash2 size={18} />
-                  </button>
-                </>
-              )}
+            <label className="field">
+              <span className="field__label">Пример правильного значения</span>
+              <input className="input" value={r.example} onChange={(e) => set({ example: e.target.value })} />
+            </label>
+          </div>
+          <label className="field">
+            <span className="field__label">Формат (regex)</span>
+            <input className={`input mono ${error ? 'input--error' : ''}`} value={r.regex} onChange={(e) => set({ regex: e.target.value })} placeholder="пусто — любое значение" />
+            {error ? <span className="field__error">{error}</span> : <span className="field__hint">Регулярное выражение JavaScript. ^ и $ — начало и конец значения.</span>}
+          </label>
+          <div className="grid-2">
+            <label className="field">
+              <span className="field__label">Маска для исправления</span>
+              <input className="input mono" value={r.mask ?? ''} onChange={(e) => set({ mask: e.target.value || undefined })} placeholder="8(999)999-99-99" />
+              <span className="field__hint">9 — цифра. По маске предлагается исправление: «89000000000» → «8(900)000-00-00».</span>
+            </label>
+            <div className="field">
+              <span className="field__label">Проверка</span>
+              <RegexTester rule={r} />
             </div>
-          ))}
-        </div>
-        <p className="small muted" style={{ margin: 0 }}>
-          Сёла, улицы, индексы и другие подтверждённые значения — в разделе <Link to="/dictionaries">Справочники</Link>.
-        </p>
-      </section>
+          </div>
+        </>
+      )}
 
-      <section className="stack">
-        <h2>Шаблоны полей</h2>
-        <div className="grid-3">
-          <label className="field">
-            <span className="field__label">Телефон: готовые шаблоны</span>
-            <select className="select" value={PHONE_MASKS.includes(rules.phoneMask) ? rules.phoneMask : ''} disabled={readOnly} onChange={(e) => e.target.value && update({ phoneMask: e.target.value })}>
-              {!PHONE_MASKS.includes(rules.phoneMask) && <option value="">свой шаблон</option>}
-              {PHONE_MASKS.map((m) => (
-                <option key={m} value={m}>
-                  {showMask(m)}
-                </option>
-              ))}
-            </select>
-          </label>
-          <MaskInput label="Телефон: маска" value={rules.phoneMask} digits={10} disabled={readOnly} onChange={(v) => update({ phoneMask: v })} hint="9 — цифра. Сейчас: {mask}" />
-          <MaskInput label="Номер членского билета: маска" value={rules.cardMask} disabled={readOnly} onChange={(v) => update({ cardMask: v })} hint="9 — цифра. Сейчас: {mask}" />
-          <label className="field">
-            <span className="field__label">Столбец «Регион»</span>
-            <select className="select" value={rules.regionStyle} disabled={readOnly} onChange={(e) => update({ regionStyle: e.target.value as typeof rules.regionStyle })}>
-              <option value="full">Республика Хакасия</option>
-              <option value="short">Респ. Хакасия</option>
-            </select>
-          </label>
-          <label className="field">
-            <span className="field__label">Кавычки в названиях</span>
-            <select className="select" value={rules.quoteStyle} disabled={readOnly} onChange={(e) => update({ quoteStyle: e.target.value as typeof rules.quoteStyle })}>
-              <option value="guillemets">«Ёлочки»</option>
-              <option value="straight">"Прямые"</option>
-            </select>
-          </label>
-          <label className="field">
-            <span className="field__label">Дата исключения, если её нет</span>
-            <input className="input" value={rules.emptyDate} disabled={readOnly} onChange={(e) => update({ emptyDate: e.target.value })} />
-          </label>
-          <label className="field">
-            <span className="field__label">Возраст от (иначе — подтвердить)</span>
-            <input className="input" type="number" min={0} value={rules.ageMin} disabled={readOnly} onChange={(e) => update({ ageMin: Number(e.target.value) })} />
-          </label>
-          <label className="field">
-            <span className="field__label">Возраст до (иначе — подтвердить)</span>
-            <input className="input" type="number" min={0} value={rules.ageMax} disabled={readOnly} onChange={(e) => update({ ageMax: Number(e.target.value) })} />
-          </label>
-        </div>
-        <label className="check">
-          <input type="checkbox" checked={rules.emailLowercase} disabled={readOnly} onChange={(e) => update({ emailLowercase: e.target.checked })} /> Почта только строчными буквами
+      {r.kind === 'list' && (
+        <label className="field">
+          <span className="field__label">Хранить внутри значения другого поля</span>
+          <select className="select" value={r.within ?? ''} onChange={(e) => set({ within: e.target.value || undefined })}>
+            <option value="">— нет, просто список —</option>
+            {listFields.map((f) => (
+              <option key={f.id} value={f.id}>
+                {f.label}
+              </option>
+            ))}
+          </select>
+          <span className="field__hint">Например, «Кем выдан паспорт» внутри «Код подразделения»: для кода 190-000 верно только то, что подтверждено для него.</span>
         </label>
-        <p className="small muted" style={{ margin: 0 }}>
-          Неизменные шаблоны: дата — ДД.ММ.ГГГГ, СНИЛС — XXX-XXX-XXX XX, ИНН — 12 цифр, паспорт — серия 4 цифры, номер 6 цифр, код
-          подразделения — XXX-XXX, ВКонтакте — https://vk.com/…
-        </p>
-      </section>
-      {editing && <TemplateEditor initial={editing} onSave={saveTemplate} onClose={() => setEditing(null)} />}
+      )}
+
+      {r.kind === 'tree' && r.template && <TemplateEditor value={r.template} onChange={(template) => set({ template })} treeNames={treeNames} />}
+
+      <div className="field">
+        <span className="field__label">Подтверждение</span>
+        <label className="check">
+          <input type="checkbox" checked={r.required} onChange={(e) => set({ required: e.target.checked })} /> Обязательное — пустое значение будет ошибкой
+        </label>
+        <label className="check">
+          <input type="checkbox" checked={r.confirm || r.unique} disabled={r.unique} onChange={(e) => set({ confirm: e.target.checked })} /> Индивидуальное — всегда предупреждение и
+          отдельная галочка у каждого человека
+        </label>
+        <label className="check">
+          <input type="checkbox" checked={r.unique} onChange={(e) => set({ unique: e.target.checked })} /> Уникальное — то же значение у другого человека (в таблице или в базе
+          людей) будет ошибкой
+        </label>
+        {r.unique && r.uniqueWith?.length ? <span className="field__hint">Сравнивается вместе с: {r.uniqueWith.map(label).join(', ')}.</span> : null}
+      </div>
+
+      <div className="row">
+        <button className="btn btn--primary" onClick={() => onSave(r)} disabled={!!error || !!orderError}>
+          Сохранить
+        </button>
+        <button className="btn" onClick={onClose}>
+          Отмена
+        </button>
+        <span className="spacer" />
+        {custom && (
+          <button className="btn btn--ghost" onClick={onReset}>
+            <RotateCcw size={16} /> По умолчанию
+          </button>
+        )}
+      </div>
+    </div>
+  );
+}
+
+export function RulesView() {
+  const { rules, loaded, readOnly, error, setField, resetField, isCustom } = useRules();
+  const [open, setOpen] = useState<string | null>(null);
+  const defaults = useMemo(() => defaultRules(), []);
+
+  if (!loaded) return <div className="loading">Загрузка правил…</div>;
+
+  return (
+    <div className="stack">
+      {error && <Alert kind="error">{error}</Alert>}
+      {readOnly && <Alert kind="warning">Правила сохранены более новой версией DocAssist — сейчас только просмотр.</Alert>}
+      <p className="muted" style={{ margin: 0 }}>
+        У каждого столбца анкеты своё правило: формат (regex), список значений из базы («ключ:значение») или древо с
+        конструктором. База сначала пустая — значения попадают в неё, когда вы их подтверждаете. Индивидуальное (паспорт, СНИЛС,
+        телефон…) всегда подтверждается галочкой у каждого человека.
+      </p>
+
+      <div className="rules-list">
+        {PERSON_FIELDS.map((f, i) => {
+          const rule = rules[f.id];
+          const isOpen = open === f.id;
+          return (
+            <section key={f.id} className={`card rule ${isOpen ? 'rule--open' : ''}`}>
+              <button className="rule__head" onClick={() => setOpen(isOpen ? null : f.id)} aria-expanded={isOpen}>
+                {isOpen ? <ChevronDown size={18} /> : <ChevronRight size={18} />}
+                <span className="rule__num faint">{i + 1}.</span>
+                <span className="rule__title">{f.label}</span>
+                {isCustom(f.id) && <span className="badge badge--updated">изменено</span>}
+                <Summary id={f.id} rule={rule} rules={rules} />
+              </button>
+              {isOpen && (
+                <FieldEditor
+                  key={JSON.stringify(rule)}
+                  id={f.id}
+                  initial={rule}
+                  rules={rules}
+                  custom={isCustom(f.id)}
+                  onSave={(r) => {
+                    if (readOnly) return;
+                    setField(f.id, r);
+                    setOpen(null);
+                  }}
+                  onReset={() => {
+                    if (readOnly) return;
+                    if (confirm(`Вернуть правило «${f.label}» по умолчанию?`)) {
+                      resetField(f.id);
+                      setOpen(null);
+                    }
+                  }}
+                  onClose={() => setOpen(null)}
+                />
+              )}
+            </section>
+          );
+        })}
+      </div>
+
+      <details className="card card--flat">
+        <summary>
+          Сокращения — встроены все ({ABBREVIATIONS.length}) · по ним ячейка дробится на части
+        </summary>
+        <div className="abbr-grid">
+          {Object.entries(ABBR_GROUPS).map(([g, title]) => {
+            const list = ABBREVIATIONS.filter((a) => a.group === g);
+            if (!list.length) return null;
+            return (
+              <div key={g}>
+                <strong className="small">{title}</strong>
+                <div className="small">
+                  {list.map((a) => (
+                    <div key={a.abbr + a.title}>
+                      <span className="mono">{a.after ? `… ${a.abbr}` : `${a.abbr} …`}</span> <span className="muted">{a.title}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </details>
+      <p className="small faint" style={{ margin: 0 }}>
+        Правила по умолчанию: {Object.keys(defaults).length} столбцов. Хранятся в рабочей папке: «Проверка анкет/rules.json».
+      </p>
     </div>
   );
 }
