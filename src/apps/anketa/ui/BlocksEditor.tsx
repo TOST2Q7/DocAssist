@@ -6,6 +6,7 @@ import {
   BLOCK_TITLES,
   blocksMask,
   checkBlocks,
+  describeBlock,
   describeBlocks,
   describeFormat,
   findPreset,
@@ -70,7 +71,7 @@ function BlockBody({ b, set }: { b: Block; set: (patch: Partial<Block>) => void 
           <input className="input input--sm" inputMode="numeric" value={b.from} onChange={(e) => set({ from: num(e.target.value, 0) })} aria-label="Число от" />
           <span className="muted">до</span>
           <input className="input input--sm" inputMode="numeric" value={b.to} onChange={(e) => set({ to: num(e.target.value, b.from) })} aria-label="Число до" />
-          <span className="small faint">без нулей впереди: «7», а не «07»</span>
+          <span className="small faint">все цифры подряд — одно число: «15» — это 15, а не 1 и 5; без нулей впереди</span>
         </span>
       );
     case 'chars':
@@ -261,21 +262,33 @@ export function FormatTester({ blocks }: { blocks: Block[] }) {
   const [v, setV] = useState('');
   const m = matcher(blocks);
   const ok = m.test(v);
+  const why = v && !ok ? m.explain(v) : null;
+  const split = v && ok && blocks.length > 1 ? m.split(v) : null;
   const fix = v && !ok ? suggestFix(v, m.test, blocksMask(blocks)) : null;
   // Поле ввода всегда одно и то же — иначе при первом символе оно пересоздаётся и теряет курсор.
   return (
     <div className="stack stack--s">
       <input className={`input ${v && !ok ? 'input--error' : ''}`} value={v} onChange={(e) => setV(e.target.value)} placeholder="Проверить значение…" aria-label="Проверить значение" />
       {v && (
-        <span className="small" style={{ color: ok ? 'var(--success)' : 'var(--error)' }}>
-          {ok ? 'Подходит' : 'Не подходит'}
-          {fix && (
-            <span className="muted">
-              {' '}
-              · исправление: <span className="mono">{fix}</span>
-            </span>
-          )}
+        <span className="small tester__verdict" style={{ color: ok ? 'var(--success)' : 'var(--error)' }}>
+          {ok ? 'Подходит' : `Не подходит${why ? `: ${why.text}` : ''}`}
         </span>
+      )}
+      {fix && (
+        <span className="small muted">
+          Исправление: <span className="mono">{fix}</span>
+        </span>
+      )}
+      {split && (
+        <div className="tester__split small" aria-label="Разбор по блокам">
+          {split.map((part, i) =>
+            part ? (
+              <span key={i} className="tester__part" title={describeBlock(blocks[i])}>
+                <span className="faint">{i + 1}</span> <span className="mono">{part === ' ' ? '␣' : part}</span>
+              </span>
+            ) : null,
+          )}
+        </div>
       )}
     </div>
   );

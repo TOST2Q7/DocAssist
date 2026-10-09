@@ -32,6 +32,32 @@ describe('блоки: проверка значения', () => {
     bad(b, '0', '12', '01', ' 6', '6 ');
   });
 
+  it('число забирает все цифры подряд: «15» — это 15, а не «1» + «5»', () => {
+    const b: Block[] = [{ type: 'number', from: 0, to: 11 }, { type: 'digits', count: { min: 0, max: 2 } }];
+    bad(b, '15', '111', '07');
+    ok(b, '0', '11');
+    expect(checkBlocks(b)[0]).toMatch(/забирает все цифры подряд/);
+    bad([{ type: 'digits', count: { min: 1, max: null } }, { type: 'number', from: 1, to: 6 }], '123');
+    // Через разделитель — как задумано.
+    const range: Block[] = [{ type: 'number', from: 1, to: 6 }, { type: 'text', text: '-' }, { type: 'number', from: 1, to: 6 }];
+    ok(range, '1-6');
+    bad(range, '1-7', '12-6');
+    expect(checkBlocks(range)).toEqual([]);
+  });
+
+  it('почему не подходит: место и ожидание', () => {
+    const why = (blocks: Block[], v: string) => matcher(blocks).explain(v)?.text;
+    expect(why([{ type: 'number', from: 0, to: 11 }, { type: 'digits', count: { min: 0, max: 2 } }], '15')).toBe('в начале должно быть: число от 0 до 11, а стоит «15»');
+    expect(why(presetBlocks('phone'), '8(000)000-0000')).toBe('после «8(000)000-00» должно быть: «-», а стоит «00»');
+    expect(why(presetBlocks('phone'), '8(000)000-00-00 доб')).toBe('лишнее в конце: « доб»');
+    expect(why(presetBlocks('snils'), '000-000-000')).toBe('не хватает в конце: пробел');
+    expect(why(presetBlocks('date'), '31.04.2007')).toBe('такой даты нет: «31.04.2007»');
+    expect(why([{ type: 'date', yearFrom: 1950, yearTo: 2015 }], '01.01.2020')).toBe('год 2020 — не от 1950 до 2015');
+    expect(matcher(presetBlocks('course')).explain('7')).toMatchObject({ trivial: true });
+    expect(matcher(presetBlocks('phone')).explain('8(000)000-00-00')).toBeNull();
+    expect(matcher(presetBlocks('snils')).split('000-111-222 33')).toEqual(['000', '-', '111', '-', '222', ' ', '33']);
+  });
+
   it('готовые форматы: что подходит и что нет', () => {
     const table: Record<string, [string[], string[]]> = {
       date: [['01.01.2000', '29.02.2008'], ['1.1.2000', '29.02.2007', '31.04.2007', '00.00.0000', '01.01.1899']],

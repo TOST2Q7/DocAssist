@@ -806,6 +806,21 @@
   gap: 4px;
   min-width: 84px;
 }
+.tester__verdict {
+  overflow-wrap: anywhere;
+}
+.tester__split {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+.tester__part {
+  padding: 1px 6px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-s);
+  background: var(--surface-2);
+  white-space: pre;
+}
 .fmt__line {
   display: flex;
   align-items: center;

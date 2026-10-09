@@ -136,8 +136,20 @@ function charClass(b: BlockOf<'chars'>, mode: 'lower' | 'upper' | 'any'): string
 const numberRange = (b: BlockOf<'number'>): [number, number] => [Math.min(b.from, b.to), Math.max(b.from, b.to)];
 const MAX_NUMBERS = 1000;
 
-/** Один блок — во внутреннее выражение. Дата — единственный блок с группами (день, месяц, год проверяются отдельно). */
-function source(b: Block): string {
+/** Старые браузеры (Safari до 16.4) не знают «(?<!…)» — тогда граница числа слева проверяется без него. */
+const LOOKBEHIND = (() => {
+  try {
+    return new RegExp('(?<!a)b').test('b');
+  } catch {
+    return false;
+  }
+})();
+
+/**
+ * Один блок — во внутреннее выражение. i — номер блока (имена групп даты).
+ * «Число» забирает все цифры подряд: «15» — это 15, а не «1» и «5».
+ */
+function source(b: Block, i: number): string {
   switch (b.type) {
     case 'text':
       return escapeText(b.text);
@@ -149,8 +161,8 @@ function source(b: Block): string {
       const [lo, hi] = numberRange(b);
       if (hi - lo >= MAX_NUMBERS) return NEVER;
       const vals: string[] = [];
-      for (let i = lo; i <= hi; i++) vals.push(String(i));
-      return vals.join('|');
+      for (let n = lo; n <= hi; n++) vals.push(String(n));
+      return `${LOOKBEHIND ? '(?<!\\d)' : ''}(?:${vals.join('|')})(?!\\d)`;
     }
     case 'chars': {
       const any = charClass(b, 'any');
@@ -178,7 +190,7 @@ function source(b: Block): string {
     case 'house':
       return b.slash ? '\\d+[а-я]?(?:\\/\\d+[а-я]?)?' : '\\d+[а-я]?';
     case 'date':
-      return '(\\d{2})\\.(\\d{2})\\.(\\d{4})';
+      return `(?<d${i}>\\d{2})\\.(?<m${i}>\\d{2})\\.(?<y${i}>\\d{4})`;
     case 'time':
       return `(?:[01]\\d|2[0-3]):[0-5]\\d${b.seconds ? ':[0-5]\\d' : ''}`;
     case 'email':
@@ -192,41 +204,87 @@ export function realDate(d: number, m: number, y: number): boolean {
   return d <= new Date(Date.UTC(y, m, 0)).getUTCDate();
 }
 
-export interface Matcher {
-  /** Подходит ли значение. */
-  test: (value: string) => boolean;
-  /** Формат пуст — подходит любое значение. */
-  any: boolean;
+/** Почему значение не подходит — словами. trivial — только повторяет описание формата (один блок, не подошёл целиком). */
+export interface Explain {
+  text: string;
+  trivial: boolean;
 }
 
-const ANY: Matcher = { test: () => true, any: true };
+export interface Matcher {
+  /** Формат пуст — подходит любое значение. */
+  any: boolean;
+  /** Подходит ли значение. */
+  test: (value: string) => boolean;
+  /** Как подошедшее значение разложилось по блокам: текст каждого блока («» — необязательного нет). */
+  split: (value: string) => string[] | null;
+  /** Почему не подходит: на каком месте и что ожидалось. null — подходит. */
+  explain: (value: string) => Explain | null;
+}
+
+const ANY: Matcher = { any: true, test: () => true, split: () => [], explain: () => null };
+
+const short = (s: string) => (s.length > 24 ? `${s.slice(0, 22)}…` : s);
+const tail = (s: string) => (s.length > 24 ? `…${s.slice(-22)}` : s);
 
 function build(blocks: Block[]): Matcher {
-  const dates: { group: number; from: number; to: number }[] = [];
-  let groups = 0;
-  const parts = blocks.map((b) => {
-    if (b.type === 'date') {
-      dates.push({ group: groups + 1, from: Math.min(b.yearFrom, b.yearTo), to: Math.max(b.yearFrom, b.yearTo) });
-      groups += 3;
+  const parts = blocks.map((b, i) => `(?<b${i}>${source(b, i)})${b.optional ? '?' : ''}`);
+  const dates = blocks.flatMap((b, i) => (b.type === 'date' ? [{ i, from: Math.min(b.yearFrom, b.yearTo), to: Math.max(b.yearFrom, b.yearTo) }] : []));
+  const compile = (src: string) => {
+    try {
+      return new RegExp(src, 'u');
+    } catch {
+      return null;
     }
-    return `(?:${source(b)})${b.optional ? '?' : ''}`;
-  });
-  let re: RegExp;
-  try {
-    re = new RegExp(`^${parts.join('')}$`, 'u');
-  } catch {
-    return { test: () => false, any: false };
-  }
+  };
+  const full = compile(`^${parts.join('')}$`);
+  const prefixes = new Map<number, RegExp | null>();
+  const prefix = (k: number) => {
+    if (!prefixes.has(k)) prefixes.set(k, compile(`^${parts.slice(0, k).join('')}`));
+    return prefixes.get(k)!;
+  };
+  /** Даты в найденном: null — все настоящие, иначе что не так. */
+  const badDate = (m: RegExpExecArray, upto: number): string | null => {
+    for (const { i, from, to } of dates) {
+      if (i >= upto) continue;
+      const g = m.groups ?? {};
+      if (g[`d${i}`] === undefined) continue; // необязательной даты нет
+      const [d, mo, y] = [g[`d${i}`], g[`m${i}`], g[`y${i}`]].map(Number);
+      if (!realDate(d, mo, y)) return `такой даты нет: «${g[`b${i}`]}»`;
+      if (y < from || y > to) return `год ${y} — не от ${from} до ${to}`;
+    }
+    return null;
+  };
+  const run = (value: string) => {
+    const m = full?.exec(value);
+    return m && !badDate(m, blocks.length) ? m : null;
+  };
+
   return {
     any: false,
-    test(value: string) {
-      const m = re.exec(value);
-      if (!m) return false;
-      return dates.every(({ group, from, to }) => {
-        if (m[group] === undefined) return true; // необязательной даты нет
-        const [d, mo, y] = [m[group], m[group + 1], m[group + 2]].map(Number);
-        return y >= from && y <= to && realDate(d, mo, y);
-      });
+    test: (value) => !!run(value),
+    split(value) {
+      const m = run(value);
+      return m ? blocks.map((_, i) => m.groups?.[`b${i}`] ?? '') : null;
+    },
+    explain(value) {
+      const m = full?.exec(value);
+      if (m) {
+        const bad = badDate(m, blocks.length);
+        return bad ? { text: bad, trivial: false } : null;
+      }
+      // Самое длинное начало значения, которое подходит под первые k блоков.
+      for (let k = blocks.length; k >= 0; k--) {
+        const p = prefix(k)?.exec(value);
+        if (!p || badDate(p, k)) continue;
+        const done = p[0];
+        const rest = value.slice(done.length);
+        if (k === blocks.length) return { text: `лишнее в конце: «${short(rest)}»`, trivial: false };
+        const want = describeBlock({ ...blocks[k], optional: undefined } as Block);
+        if (!rest) return { text: `не хватает в конце: ${want}`, trivial: false };
+        if (!done) return { text: `в начале должно быть: ${want}, а стоит «${short(rest)}»`, trivial: blocks.length === 1 };
+        return { text: `после «${tail(done)}» должно быть: ${want}, а стоит «${short(rest)}»`, trivial: false };
+      }
+      return { text: 'не подходит', trivial: true };
     },
   };
 }
@@ -340,6 +398,8 @@ export function describeFormat(blocks: Block[] | undefined): string {
 
 /** Блоки-слова: два таких подряд без пробела между ними — почти всегда ошибка в формате. */
 const WORDY = new Set<BlockType>(['anytext', 'word', 'date', 'time', 'email', 'house', 'number']);
+/** Блок начинается или кончается цифрой — рядом с «Числом» цифры склеятся. */
+const digitEdge = (b: Block) => ['digits', 'number', 'date', 'time', 'house'].includes(b.type) || (b.type === 'chars' && b.digits);
 
 /** Проблемы в блоках — чтобы не собрать формат, который ничему не соответствует. */
 export function checkBlocks(blocks: Block[]): string[] {
@@ -355,7 +415,9 @@ export function checkBlocks(blocks: Block[]): string[] {
     if (b.type === 'date' && (b.yearFrom < 1000 || b.yearTo > 9999)) out.push(`${n}: год — четыре цифры`);
     const prev = blocks[i - 1];
     if (b.type === 'space' && prev?.type === 'space' && !b.optional && !prev.optional) out.push(`${n}: два пробела подряд — значение с двумя пробелами обычно ошибка`);
-    if (prev && WORDY.has(prev.type) && WORDY.has(b.type)) out.push(`Блоки ${i} и ${i + 1} стоят вплотную — между ними обычно нужен «Пробел» или «Текст»`);
+    if (prev && ((prev.type === 'number' && digitEdge(b)) || (b.type === 'number' && digitEdge(prev)))) {
+      out.push(`Блоки ${i} и ${i + 1}: «Число» забирает все цифры подряд, поэтому цифры вплотную к нему не читаются отдельно («15» — это 15, а не 1 и 5). Поставьте между ними «Текст» или «Пробел»`);
+    } else if (prev && WORDY.has(prev.type) && WORDY.has(b.type)) out.push(`Блоки ${i} и ${i + 1} стоят вплотную — между ними обычно нужен «Пробел» или «Текст»`);
   });
   if (blocks.length && blocks.every((b) => b.optional)) out.push('Все блоки необязательные — пустое значение тоже подойдёт');
   return out;
@@ -386,7 +448,7 @@ export function sampleOf(blocks: Block[]): string | undefined {
       case 'space':
         return ' ';
       case 'digits':
-        return '0'.repeat(Math.max(1, b.count.min));
+        return '0'.repeat(Math.max(0, b.count.min));
       case 'number':
         return String(numberRange(b)[0]);
       case 'chars': {

@@ -149,7 +149,9 @@ export function checkField(fieldId: string | null, col: number, value: string, r
     if (!m.test(value)) {
       const fix = suggestFix(value, m.test, blocksMask(rule.format));
       const spaces = value !== value.trim() || /\s{2}/.test(value) ? ' — есть лишние пробелы' : '';
-      r.issues.push({ level: 'error', text: `Не по формату: ${describeFormat(rule.format)}${spaces}`, span: [0, value.length], fix: fix ?? undefined });
+      const why = m.explain(value);
+      const detail = spaces || (why && !why.trivial ? ` — ${why.text}` : '');
+      r.issues.push({ level: 'error', text: `Не по формату: ${describeFormat(rule.format)}${detail}`, span: [0, value.length], fix: fix ?? undefined });
       if (fix) r.fix = fix;
     } else if (rule.kind === 'list' && fieldId) {
       checkList(r, rule, fieldId, row, ctx);
