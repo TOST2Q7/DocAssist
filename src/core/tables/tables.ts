@@ -121,6 +121,73 @@ export function parseCsv(text: string, delimiter = detectDelimiter(text)): strin
   return rows;
 }
 
+/**
+ * Разбор текста, скопированного из Excel или Google Таблиц (столбцы — табуляцией, строки — переводом строки).
+ * В отличие от CSV, кавычки снимаются, только если они действительно экранируют ячейку: внутри есть
+ * перевод строки, табуляция или удвоенная кавычка. Иначе это часть значения: «"Еноты"» остаётся «"Еноты"».
+ */
+export function parseTsv(text: string): string[][] {
+  const rows: string[][] = [];
+  let row: string[] = [];
+  const n = text.length;
+  let i = 0;
+  const endRow = () => {
+    rows.push(row);
+    row = [];
+  };
+  while (i <= n) {
+    let field: string | null = null;
+    if (text[i] === '"') {
+      let j = i + 1;
+      let val = '';
+      let escaped = false;
+      let closed = false;
+      while (j < n) {
+        const ch = text[j];
+        if (ch === '"') {
+          if (text[j + 1] === '"') {
+            val += '"';
+            escaped = true;
+            j += 2;
+            continue;
+          }
+          closed = true;
+          break;
+        }
+        if (ch === '\n' || ch === '\r' || ch === '\t') escaped = true;
+        val += ch;
+        j++;
+      }
+      const after = text[j + 1];
+      if (closed && escaped && (j + 1 >= n || after === '\t' || after === '\n' || after === '\r')) {
+        field = val.replace(/\r\n?/g, '\n');
+        i = j + 1;
+      }
+    }
+    if (field === null) {
+      let k = i;
+      while (k < n && text[k] !== '\t' && text[k] !== '\n' && text[k] !== '\r') k++;
+      field = text.slice(i, k);
+      i = k;
+    }
+    row.push(field);
+    if (i >= n) {
+      endRow();
+      break;
+    }
+    if (text[i] === '\t') {
+      i++;
+      continue;
+    }
+    // Перевод строки: \r\n, \n или \r.
+    if (text[i] === '\r' && text[i + 1] === '\n') i++;
+    i++;
+    endRow();
+    if (i >= n) break;
+  }
+  return rows;
+}
+
 function matrixToTable(matrix: string[][], sheetName: string, sheetNames: string[]): TableData {
   const isEmpty = (r: string[]) => r.every((c) => c.trim() === '');
   const headerIdx = matrix.findIndex((r) => !isEmpty(r));

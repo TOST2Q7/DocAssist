@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import * as XLSX from 'xlsx';
-import { parseCsv, readTable, writeXlsx } from './tables';
+import { parseCsv, parseTsv, readTable, writeXlsx } from './tables';
 
 describe('таблицы', () => {
   it('CSV с кавычками и «;»', () => {
@@ -27,6 +27,17 @@ describe('таблицы', () => {
     expect(t.rows[0]).toEqual(['01.01.2000', '012345', '123456789012', 'Абакан']);
     expect(t.rows[1][0]).toBe('01.09.2025 12:00:00');
     expect(t.sourceRows).toEqual([2, 3]);
+  });
+
+  it('вставка из буфера: кавычки — часть значения, если не экранируют', () => {
+    expect(parseTsv('"Еноты"\tДа\n')).toEqual([['"Еноты"', 'Да']]);
+    expect(parseTsv('ГБПОУ "Колледж»\t"Отряд"')).toEqual([['ГБПОУ "Колледж»', '"Отряд"']]);
+    // Excel/Google экранируют ячейку с кавычками или переводом строки — снимаем.
+    expect(parseTsv('"""Еноты"""\t2\r\n')).toEqual([['"Еноты"', '2']]);
+    expect(parseTsv('А\t"строка 1\nстрока 2"\tБ\n')).toEqual([['А', 'строка 1\nстрока 2', 'Б']]);
+    // Пустые ячейки и хвостовая табуляция.
+    expect(parseTsv('a\t\tc\t\nd')).toEqual([['a', '', 'c', ''], ['d']]);
+    expect(parseTsv('"')).toEqual([['"']]);
   });
 
   it('запись XLSX сохраняет текст как есть', () => {

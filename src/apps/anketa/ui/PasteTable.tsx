@@ -1,7 +1,7 @@
 import { ClipboardPaste } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import { looksLikeHeader, matchColumns, PERSON_FIELDS } from '@/core/schema/fields';
-import { parseCsv, writeXlsx } from '@/core/tables/tables';
+import { parseTsv, writeXlsx } from '@/core/tables/tables';
 import { useWorkspace } from '@/core/workspace/WorkspaceContext';
 import { Modal } from '@/ui/Modal';
 import { useToast } from '@/ui/Toast';
@@ -14,7 +14,7 @@ import { useToast } from '@/ui/Toast';
 
 /** Разобрать текст из буфера: строки — переводы строк, столбцы — табуляция (как копирует Excel). */
 export function parseClipboardTable(text: string): string[][] {
-  const rows = parseCsv(text.replace(/\r\n?/g, '\n'), '\t').map((r) => r.map((c) => c.replace(/ /g, ' ')));
+  const rows = parseTsv(text).map((r) => r.map((c) => c.replace(/\u00a0/g, ' ')));
   while (rows.length && rows[rows.length - 1].every((c) => !c.trim())) rows.pop();
   return rows.filter((r) => r.some((c) => c.trim()));
 }
