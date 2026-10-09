@@ -2,7 +2,7 @@ name: Тесты и публикация
 
 on:
   push:
-    branches: [tests, main]
+    branches: [testing, tests, main]
   pull_request:
   workflow_dispatch:
 
