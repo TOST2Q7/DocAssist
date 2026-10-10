@@ -1,6 +1,7 @@
 import type { Step } from '@/core/base/tree';
 
-export type Level = 'error' | 'warn';
+/** error — ошибка; warn — предупреждение (снимается галочкой «Проверено»); info — совет, ни на что не влияет. */
+export type Level = 'error' | 'warn' | 'info';
 
 export interface Issue {
   level: Level;
@@ -13,6 +14,14 @@ export interface Issue {
   confirmable?: boolean;
   /** Напоминание «поставьте галочку» у индивидуального значения. */
   person?: boolean;
+  /** «Нет в базе» — снимается добавлением в базу. */
+  base?: boolean;
+  /** Предупреждение снято галочкой «Проверено». */
+  resolved?: boolean;
+  /** Проигнорировано (кнопкой «Игнорировать»). */
+  ignored?: boolean;
+  /** Ошибка в коде проверки, а не в значении. */
+  script?: boolean;
 }
 
 export interface BaseAddition {
@@ -50,12 +59,18 @@ export interface FieldResult {
   parts?: PartView[];
   /** Пример правильного значения (из правил) — показывается, когда есть ошибка. */
   example?: string;
+  /** Проверить уникальность: вместе с какими полями и сверять ли с базой людей. */
+  unique?: { with: string[]; people: boolean };
+  /** Значения, которые проверка запомнила (remember) — их видят другие ячейки: cell("…").vars. */
+  vars?: Record<string, unknown>;
 }
 
 export interface Counts {
   error: number;
   /** Требуют подтверждения. */
   warn: number;
+  /** Проигнорировано замечаний. */
+  ignored: number;
 }
 
 export interface PersonResult {
@@ -70,7 +85,15 @@ export function countIssues(fields: FieldResult[]): Counts {
   return {
     error: fields.filter((f) => f.status === 'error').length,
     warn: fields.filter((f) => f.status === 'warn').length,
+    ignored: fields.reduce((n, f) => n + f.issues.filter((i) => i.ignored).length, 0),
   };
+}
+
+/** Статус поля по замечаниям: проигнорированное и снятое галочкой не считается. */
+export function statusOf(issues: Issue[]): FieldStatus {
+  if (issues.some((i) => i.level === 'error' && !i.ignored)) return 'error';
+  if (issues.some((i) => i.level === 'warn' && !i.resolved && !i.ignored)) return 'warn';
+  return 'ok';
 }
 
 export const isReady = (c: Counts) => c.error + c.warn === 0;

@@ -35,6 +35,8 @@ export interface AppManifest {
   folder: string;
   /** Нужна ли открытая рабочая папка. */
   requiresWorkspace: boolean;
+  /** Файлы настроек приложения (пути в рабочей папке) — для «Скопировать настройки». Переменные, словарь и данные людей сюда не входят. */
+  settingsFiles?: string[];
   badges?: BadgeDef[];
   /** Порядок на главной (меньше — выше). */
   order?: number;

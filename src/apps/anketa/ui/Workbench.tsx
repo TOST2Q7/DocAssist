@@ -1,4 +1,4 @@
-import { ArrowLeft, BookCheck, Download, Loader2, SearchCheck, UserPlus, Wand2 } from 'lucide-react';
+import { ArrowLeft, BookCheck, Download, Eye, EyeOff, Loader2, SearchCheck, UserPlus, Wand2 } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import { usePeople } from '@/core/people/people';
 import { FIELD_BY_ID, PERSON_FIELDS } from '@/core/schema/fields';
@@ -123,6 +123,10 @@ function Loaded({ path, row, onRow, onSheet, onClose, table, size, lastModified 
         onConfirm={(col, value) => s.confirm(row, col, value)}
         onConfirmMany={s.confirmMany}
         onToggleReviewed={() => s.toggleReviewed(row)}
+        onIgnore={(col, text, on) => s.ignore(row, col, model.values[row][col] ?? '', text, on)}
+        rowIgnored={(s.session.ignoredRows ?? []).includes(row)}
+        onIgnoreRow={(on) => s.ignoreRow(row, on)}
+        tableIgnored={!!s.session.ignoreAll}
       />
     );
   }
@@ -163,12 +167,24 @@ function Loaded({ path, row, onRow, onSheet, onClose, table, size, lastModified 
         <button className="btn" onClick={saveReady} disabled={!ready.length || people.readOnly} data-tip="Сохранить готовые анкеты в базу людей">
           <UserPlus size={16} /> Готовых в базу людей ({ready.length})
         </button>
+        <button
+          className="btn"
+          disabled={s.readOnly}
+          aria-pressed={!!s.session.ignoreAll}
+          onClick={() => {
+            if (s.session.ignoreAll) s.ignoreTable(false);
+            else if (confirm('Игнорировать все ошибки и предупреждения во всех анкетах этой таблицы?\n\nВсе анкеты будут считаться готовыми. Замечания останутся видны зачёркнутыми; вернуть можно этой же кнопкой.')) s.ignoreTable(true);
+          }}
+        >
+          {s.session.ignoreAll ? <Eye size={16} /> : <EyeOff size={16} />} {s.session.ignoreAll ? 'Вернуть замечания таблицы' : 'Игнорировать все замечания таблицы'}
+        </button>
         <span className="spacer" />
         <button className="btn btn--primary" onClick={() => setExporting(true)}>
           <Download size={16} /> Новая таблица
         </button>
       </div>
 
+      {s.session.ignoreAll && <Alert kind="warning">Все замечания таблицы проигнорированы: анкеты считаются готовыми. Вернуть — кнопкой «Вернуть замечания таблицы».</Alert>}
       {s.error && <Alert kind="error">{s.error}. Правки к этой таблице не сохраняются, пока файл не исправлен или не удалён.</Alert>}
       {s.readOnly && !s.error && <Alert kind="warning">Правки к этой таблице сохранены более новой версией DocAssist — сейчас доступен только просмотр.</Alert>}
       {conflicts > 0 && (

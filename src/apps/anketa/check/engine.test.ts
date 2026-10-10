@@ -2,10 +2,8 @@ import { describe, expect, it } from 'vitest';
 import { BaseTree, type BaseEntry, type Step } from '@/core/base/tree';
 import type { PersonRecord } from '@/core/people/people';
 import { PERSON_FIELDS } from '@/core/schema/fields';
-import { upgrade } from '@/core/schema/docType';
-import { matcher, presetBlocks } from '@/shared/cell/blocks';
-import { DEFAULT_EXAMPLES, resolveRules, rulesDocType } from '../model/rules';
-import { parseCell } from '@/shared/cell/parse';
+import { AnketaChecker } from '../lua/checker';
+import { DEFAULT_EXAMPLES, resolveChecks, type AnketaChecks } from '../model/checks';
 import { applyUniqueness, checkPerson, matchWithPeople, type CheckContext } from './engine';
 
 const HEADERS = PERSON_FIELDS.map((f) => f.label);
@@ -53,9 +51,11 @@ const SAMPLE = [
 
 const entry = (path: Step[]): BaseEntry => ({ id: Math.random().toString(36), path, addedAt: '', source: 'test' });
 
-function ctx(trees: Record<string, Step[][]> = {}, people: PersonRecord[] = []): CheckContext {
+const DEFAULT_CHECKER = new AnketaChecker(resolveChecks(undefined));
+
+function ctx(trees: Record<string, Step[][]> = {}, people: PersonRecord[] = [], checks?: AnketaChecks): CheckContext {
   return {
-    rules: resolveRules(undefined),
+    checker: checks ? new AnketaChecker(resolveChecks(checks)) : DEFAULT_CHECKER,
     trees: new Map(Object.entries(trees).map(([name, paths]) => [name, new BaseTree(paths.map(entry))])),
     people,
   };
@@ -71,8 +71,9 @@ describe('анкета: пустая база', () => {
     expect(HEADERS[34]).toBe('Отметка проверки перс. данных кандидата командным составом отряда.');
   });
 
-  it('формат: почта, кавычки, «00.00.0000» — ошибки с исправлением', () => {
-    expect(f('person.email')).toMatchObject({ status: 'error', fix: 'ivanov@example.com' });
+  it('формат: кавычки, «00.00.0000» — ошибки с исправлением; почта с заглавной — только совет', () => {
+    expect(f('person.email')).toMatchObject({ status: 'warn', fix: 'ivanov@example.com' });
+    expect(f('person.email').issues.find((i) => i.level === 'info')?.text).toMatch(/строчными/);
     expect(f('rso.squad')).toMatchObject({ status: 'error', fix: '«Название»' });
     expect(f('edu.institution')).toMatchObject({ status: 'error', fix: 'ГБПОУ «Колледж»' });
     expect(f('rso.leaveDate').status).toBe('error');
@@ -173,14 +174,12 @@ describe('уникальность и база людей', () => {
 });
 
 describe('примеры по умолчанию', () => {
-  const rules = resolveRules(undefined);
-  it('есть у каждого столбца и проходят его правило', () => {
+  it('есть у каждого столбца и проходят его проверку без ошибок', () => {
+    const checks = resolveChecks(undefined);
     for (const f of PERSON_FIELDS) {
-      const r = rules[f.id];
-      expect(r.example, f.label).toBe(DEFAULT_EXAMPLES[f.id]);
-      expect(r.example, f.label).not.toBe('');
-      if (r.kind === 'tree') expect(parseCell(r.example, r.template!).issues, f.label).toEqual([]);
-      else expect(matcher(r.format).test(r.example), f.label).toBe(true);
+      expect(checks.fields[f.id].example, f.label).toBe(DEFAULT_EXAMPLES[f.id]);
+      const { result } = DEFAULT_CHECKER.test(f.id, DEFAULT_EXAMPLES[f.id], { trees: new Map() });
+      expect(result.issues.filter((i) => i.level === 'error'), f.label).toEqual([]);
     }
   });
   it('показываются при ошибке', () => {
@@ -191,48 +190,117 @@ describe('примеры по умолчанию', () => {
   });
 });
 
-describe('перенос правил 0.3 → 0.4 (regex → блоки)', () => {
-  const v3 = {
-    $type: 'anketa/rules',
-    $version: 3,
-    data: {
+describe('проверки на Lua: связи ячеек, регулировки, буквы', () => {
+  it('дата исключения раньше даты вступления — ошибка (сравнение с другой ячейкой)', () => {
+    const v = [...SAMPLE];
+    v[col('rso.joinDate')] = '01.10.2025';
+    v[col('rso.leaveDate')] = '01.09.2025';
+    const f = checkPerson(0, v, COLUMNS, ctx()).fields[col('rso.leaveDate')];
+    expect(f.status).toBe('error');
+    expect(f.issues[0].text).toMatch(/раньше даты вступления \(01\.10\.2025\)/);
+  });
+
+  it('регулировка «Курс до» из настроек: 10 подходит при «до 11»', () => {
+    const v = [...SAMPLE];
+    v[col('edu.course')] = '10';
+    expect(checkPerson(0, v, COLUMNS, ctx()).fields[col('edu.course')].status).toBe('error');
+    const custom = ctx({}, [], { fields: { 'edu.course': { settings: { 'Курс до': 11 } } } });
+    expect(checkPerson(0, v, COLUMNS, custom).fields[col('edu.course')].status).toBe('warn');
+  });
+
+  it('«й» из двух символов и латиница в русском слове — ошибка с исправлением', () => {
+    const v = [...SAMPLE];
+    v[col('person.firstName')] = 'Андреи\u0306';
+    v[col('person.lastName')] = 'Ивaнов';
+    const r = checkPerson(0, v, COLUMNS, ctx());
+    expect(r.fields[col('person.firstName')]).toMatchObject({ status: 'error', fix: 'Андрей' });
+    expect(r.fields[col('person.lastName')]).toMatchObject({ status: 'error', fix: 'Иванов' });
+    expect(r.fields[col('person.lastName')].issues[0].text).toMatch(/Смешаны русские и латинские буквы: Ивaнов/);
+  });
+
+  it('только пробелы — одна ошибка, код столбца не запускается', () => {
+    const v = [...SAMPLE];
+    v[col('person.phone')] = '   ';
+    const f = checkPerson(0, v, COLUMNS, ctx()).fields[col('person.phone')];
+    expect(f.issues.map((i) => i.text)).toEqual(['Только пробелы — ячейка выглядит пустой']);
+    expect(f.fix).toBe('');
+  });
+
+  it('cell(): значение, галочка и запомненное другой ячейкой', () => {
+    const checks: AnketaChecks = {
       fields: {
-        'edu.course': { kind: 'text', regex: '^[1-11]$', example: '1', required: true, confirm: true, unique: false },
-        'edu.group': { kind: 'text', regex: '^(?=Г).+$', example: 'ГР-01', required: true, confirm: true, unique: false },
-        'person.phone': { kind: 'text', regex: '^8\\(\\d{3}\\)\\d{3}-\\d{2}-\\d{2}$', mask: '8(999)999-99-99', example: '8(000)000-00-00', required: true, confirm: true, unique: true },
-        'rso.squad': { kind: 'list', regex: '^x$', blocks: [{ type: 'text', text: '«' }, { type: 'anytext' }, { type: 'text', text: '»' }], example: '«Название»', required: true, confirm: false, unique: false },
-        'person.regAddress': {
-          kind: 'tree',
-          regex: '',
-          example: '',
-          required: true,
-          confirm: false,
-          unique: false,
-          template: { tree: 'Адреса', separator: ', ', order: '2, 1, *', keys: [{ id: 'index', title: 'Индекс', tags: [], regex: '^\\d{6}$', required: true }, { id: 'region', title: 'Регион', tags: [], regex: '^(?!x)', required: true }] },
+        'edu.group': { script: 'remember("курс в группе", lib.sub(value, 4, 4))' },
+        'edu.course': {
+          script: `local g = cell("Группа")
+if not g.confirmed then warning("Сначала проверьте группу «" .. g.value .. "»") end
+if g.vars["курс в группе"] ~= value then problem("Курс не совпадает с группой") end`,
         },
       },
-    },
-  };
-  const { data, migratedFrom } = upgrade(rulesDocType, v3);
-  const rules = resolveRules(data);
-  it('переводится и проверяет так, как задумано', () => {
-    expect(migratedFrom).toBe(3);
-    expect(rules['edu.course'].format).toEqual([{ type: 'number', from: 1, to: 11 }]);
-    expect(matcher(rules['edu.course'].format).test('11')).toBe(true);
-    expect(rules['person.phone'].format).toEqual(presetBlocks('phone'));
-    expect(rules['rso.squad'].format).toEqual([{ type: 'text', text: '«' }, { type: 'anytext' }, { type: 'text', text: '»' }]);
-    for (const r of Object.values(data.fields)) expect(r).not.toHaveProperty('regex');
-    expect(data.fields['person.phone']).not.toHaveProperty('mask');
+    };
+    const v = [...SAMPLE];
+    v[col('edu.group')] = 'ИС-21';
+    v[col('edu.course')] = '2';
+    const c = ctx({}, [], checks);
+    const before = checkPerson(0, v, COLUMNS, c).fields[col('edu.course')];
+    expect(before.issues.map((i) => i.text)).toEqual(['Сначала проверьте группу «ИС-21»']);
+    const after = checkPerson(0, v, COLUMNS, c, { [col('edu.group')]: 'ИС-21' }).fields[col('edu.course')];
+    expect(after.status).toBe('ok');
+    v[col('edu.course')] = '3';
+    expect(checkPerson(0, v, COLUMNS, c).fields[col('edu.course')].issues.map((i) => i.text)).toContain('Курс не совпадает с группой');
   });
-  it('сложный regex — формат по умолчанию и пометка со старым regex', () => {
-    expect(rules['edu.group'].format).toEqual(presetBlocks('group'));
-    expect(rules['edu.group'].legacy).toBe('^(?=Г).+$');
-    expect(rules['edu.group'].confirm).toBe(true);
+
+  it('ошибка в коде — понятное сообщение у ячейки, остальные проверяются', () => {
+    const c = ctx({}, [], { fields: { 'edu.group': { script: 'if value == "x" problem("a") end' } } });
+    const r = checkPerson(0, SAMPLE, COLUMNS, c);
+    const f = r.fields[col('edu.group')];
+    expect(f.status).toBe('error');
+    expect(f.issues[0]).toMatchObject({ script: true });
+    expect(f.issues[0].text).toMatch(/Ошибка в коде проверки «Группа», строка 1: после условия «if … » нужно «then»/);
+    expect(r.fields[col('person.phone')].status).toBe('warn');
   });
-  it('части конструктора тоже переводятся', () => {
-    const keys = rules['person.regAddress'].template!.keys;
-    expect(keys[0].format).toEqual(presetBlocks('index', true));
-    expect(keys[1].format).toEqual(presetBlocks('place', true));
-    expect(keys[1]).not.toHaveProperty('regex');
+
+  it('регулировки и базы находятся пробным запуском', () => {
+    const course = DEFAULT_CHECKER.discover('edu.course');
+    expect(course.controls.map((x) => [x.kind, x.label, x.value])).toEqual([
+      ['toggle', 'Обязательное — пустое будет ошибкой', true],
+      ['number', 'Курс от', 1],
+      ['number', 'Курс до', 6],
+      ['toggle', 'Галочка у каждого человека', true],
+    ]);
+    expect(DEFAULT_CHECKER.discover('passport.issuedBy').bases).toEqual([
+      { tree: 'Код подразделения', key: 'passport.issuedBy', title: 'Кем выдан паспорт', inside: { key: 'passport.divisionCode', title: 'Код подразделения' } },
+    ]);
+    expect(DEFAULT_CHECKER.discover('person.regAddress').parts).toBe(true);
+    expect(DEFAULT_CHECKER.treeNames().sort()).toContain('Адреса');
+  });
+
+  it('скорость: 300 анкет', () => {
+    const t0 = performance.now();
+    const c = ctx();
+    for (let i = 0; i < 300; i++) checkPerson(i, SAMPLE, COLUMNS, c);
+    const ms = performance.now() - t0;
+    console.log(`300 анкет: ${Math.round(ms)} мс`);
+    expect(ms).toBeLessThan(20000);
+  });
+});
+
+describe('игнорирование замечаний', () => {
+  it('замечание, анкета, таблица; исправление у проигнорированного не предлагается', async () => {
+    const { applyIgnores } = await import('../model/session');
+    const v = [...SAMPLE];
+    v[col('edu.group')] = 'ИС 21';
+    const res = [checkPerson(0, v, COLUMNS, ctx())];
+    const g = col('edu.group');
+    expect(res[0].fields[g]).toMatchObject({ status: 'error', fix: 'ИС21' });
+    const text = res[0].fields[g].issues[0].text;
+    const one = applyIgnores(res, { ignored: { 0: { [g]: { value: 'ИС 21', texts: [text] } } } });
+    expect(one[0].fields[g].status).toBe('ok');
+    expect(one[0].fields[g].fix).toBeUndefined();
+    expect(one[0].counts.ignored).toBe(1);
+    // Значение изменилось — игнор не действует.
+    expect(applyIgnores(res, { ignored: { 0: { [g]: { value: 'другое', texts: [text] } } } })[0].fields[g].status).toBe('error');
+    const row = applyIgnores(res, { ignoredRows: [0] });
+    expect(row[0].ready).toBe(true);
+    expect(applyIgnores(res, { ignoreAll: true })[0].ready).toBe(true);
   });
 });

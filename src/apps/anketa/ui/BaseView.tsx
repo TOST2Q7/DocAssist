@@ -2,14 +2,14 @@ import { ChevronDown, ChevronRight, CircleAlert, Plus, Search, Trash2, X } from 
 import { useMemo, useState } from 'react';
 import { useBaseTree } from '@/core/base/base';
 import { chainText, stepText, type BaseTree, type Step, type TreeNode } from '@/core/base/tree';
-import { FIELD_BY_ID, PERSON_FIELDS } from '@/core/schema/fields';
+import { PERSON_FIELDS } from '@/core/schema/fields';
 import { findAbbreviations } from '@/shared/cell/abbr';
-import { describeFormat, matcher, type Block } from '@/shared/cell/blocks';
+import { PART_CHECK_BY_ID } from '@/shared/cell/partChecks';
 import { parseOrder } from '@/shared/cell/template';
 import { useToast } from '@/ui/Toast';
 import { WorkspaceGate } from '@/ui/WorkspaceGate';
-import { allTreeNames, treeNameOf, type FieldRule } from '../model/rules';
-import { useRules } from './hooks';
+import type { AnketaChecker } from '../lua/checker';
+import { useChecker, useChecks, useTreeNames } from './hooks';
 import '../anketa.css';
 
 /*
@@ -17,7 +17,7 @@ import '../anketa.css';
  * Здесь можно посмотреть, удалить и добавить вручную: тег (что это: республика, район, улица…) + само слово.
  */
 
-/** Что можно добавить в древо: ключ, приписка (тег), формат, уровень в древе. */
+/** Что можно добавить в древо: ключ, приписка (тег), проверка, уровень в древе. */
 interface TagOption {
   id: string;
   /** Ключ узла. */
@@ -26,12 +26,16 @@ interface TagOption {
   abbr?: string;
   abbrTitle?: string;
   after?: boolean;
-  format: Block[];
+  /** Проверка части конструктора (id или функция библиотеки). */
+  part?: string;
+  /** Или проверка столбца целиком (для списков из базы). */
+  field?: string;
   /** Уровень в древе (меньше — выше). */
   level: number;
 }
 
-function optionsFor(tree: string, rules: Record<string, FieldRule>): { options: TagOption[]; fields: string[] } {
+/** Что можно добавить в древо: части конструктора и столбцы, которые берут значения из этого древа (base.check). */
+function optionsFor(tree: string, checker: AnketaChecker): { options: TagOption[]; fields: string[] } {
   const options: TagOption[] = [];
   const fields: string[] = [];
   const seen = new Set<string>();
@@ -41,25 +45,40 @@ function optionsFor(tree: string, rules: Record<string, FieldRule>): { options: 
     options.push(o);
   };
   for (const f of PERSON_FIELDS) {
-    const r = rules[f.id];
-    if (treeNameOf(f.id, rules) !== tree) continue;
-    fields.push(f.label);
-    if (r.kind === 'tree' && r.template) {
-      const { order } = parseOrder(r.template.order, r.template.keys.length);
+    const check = checker.checks.fields[f.id];
+    const use = checker.usage(f.id);
+    const t = check?.template;
+    if (use.parts && t && t.tree === tree) {
+      fields.push(f.label);
+      const { order } = parseOrder(t.order, t.keys.length);
       order.forEach((ki, level) => {
-        const k = r.template!.keys[ki];
-        if (!k.tags.length) push({ id: `${k.id}|`, k: k.id, keyTitle: k.title, format: k.format, level });
-        for (const t of k.tags) push({ id: `${k.id}|${t.abbr}`, k: k.id, keyTitle: k.title, abbr: t.abbr, abbrTitle: t.title, after: t.after, format: k.format, level });
+        const k = t.keys[ki];
+        if (!k.tags.length) push({ id: `${k.id}|`, k: k.id, keyTitle: k.title, part: k.check, level });
+        for (const tg of k.tags) push({ id: `${k.id}|${tg.abbr}`, k: k.id, keyTitle: k.title, abbr: tg.abbr, abbrTitle: tg.title, after: tg.after, part: k.check, level });
       });
-    } else if (r.kind === 'list') {
-      if (r.within) {
-        const pr = rules[r.within];
-        push({ id: `${r.within}|`, k: r.within, keyTitle: FIELD_BY_ID.get(r.within)?.label ?? r.within, format: pr?.format ?? [], level: 0 });
-      }
-      push({ id: `${f.id}|`, k: f.id, keyTitle: f.label, format: r.format, level: r.within ? 1 : 0 });
+    }
+    for (const b of use.bases) {
+      if (b.tree !== tree) continue;
+      fields.push(f.label);
+      if (b.inside) push({ id: `${b.inside.key}|`, k: b.inside.key, keyTitle: b.inside.title, field: b.inside.key, level: 0 });
+      push({ id: `${b.key}|`, k: b.key, keyTitle: b.title, field: b.key, level: b.inside ? 1 : 0 });
     }
   }
-  return { options, fields };
+  return { options, fields: [...new Set(fields)] };
+}
+
+/** Почему слово не подходит под проверку части или столбца (null — подходит). */
+function whyNot(opt: TagOption, value: string, checker: AnketaChecker): string | null {
+  if (opt.part !== undefined) {
+    if (checker.partFits(opt.part, value)) return null;
+    return `Не подходит под проверку части «${opt.keyTitle}»: ${PART_CHECK_BY_ID.get(opt.part)?.title.toLowerCase() ?? opt.part}`;
+  }
+  if (opt.field) {
+    const { result } = checker.test(opt.field, value, { trees: new Map() });
+    const err = result.issues.find((i) => i.level === 'error' && !i.base);
+    return err ? `Не подходит под проверку «${opt.keyTitle}»: ${err.text}` : null;
+  }
+  return null;
 }
 
 const optionLabel = (o: TagOption) => (o.abbr ? `${o.abbrTitle} (${o.abbr}) — ${o.keyTitle}` : `${o.keyTitle} (без приписки)`);
@@ -94,7 +113,7 @@ function NodeRow({ node, tree, depth, titles, canNest, onAdd, onRemove }: { node
   );
 }
 
-function AddForm({ tree, parent, options, onClearParent, onAdd }: { tree: BaseTree; parent: TreeNode | null; options: TagOption[]; onClearParent: () => void; onAdd: (path: Step[]) => void }) {
+function AddForm({ tree, parent, options, checker, onClearParent, onAdd }: { tree: BaseTree; parent: TreeNode | null; options: TagOption[]; checker: AnketaChecker; onClearParent: () => void; onAdd: (path: Step[]) => void }) {
   const levelOfKey = (k: string) => {
     const levels = options.filter((o) => o.k === k).map((o) => o.level);
     return levels.length ? Math.min(...levels) : -1;
@@ -109,7 +128,8 @@ function AddForm({ tree, parent, options, onClearParent, onAdd }: { tree: BaseTr
   const abbrs = value ? findAbbreviations(value) : [];
   if (abbrs.length) warnings.push(`Приписки писать не нужно — сохранится неправильно! Уберите «${abbrs.join('», «')}»: приписка задаётся тегом.`);
   if (value && opt) {
-    if (!matcher(opt.format).test(value)) warnings.push(`Не подходит под формат части «${opt.keyTitle}»: ${describeFormat(opt.format)}`);
+    const why = whyNot(opt, value, checker);
+    if (why) warnings.push(why);
   }
   if (word && word !== value) warnings.push('Лишние пробелы в начале или в конце — будут убраны.');
   if (parent && opt && opt.level <= levelOfKey(parent.k)) warnings.push(`По порядку древа «${opt.keyTitle}» не бывает внутри «${stepText(parent)}».`);
@@ -176,12 +196,12 @@ function AddForm({ tree, parent, options, onClearParent, onAdd }: { tree: BaseTr
   );
 }
 
-function TreeCard({ name, rules }: { name: string; rules: Record<string, FieldRule> }) {
+function TreeCard({ name, checker }: { name: string; checker: AnketaChecker }) {
   const base = useBaseTree(name);
   const toast = useToast();
   const [query, setQuery] = useState('');
   const [parent, setParent] = useState<TreeNode | null>(null);
-  const { options, fields } = useMemo(() => optionsFor(name, rules), [name, rules]);
+  const { options, fields } = useMemo(() => optionsFor(name, checker), [name, checker]);
   const titles = useMemo(() => new Map(options.map((o) => [o.k, o.keyTitle])), [options]);
   const canNest = (n: TreeNode) => {
     const levels = options.filter((o) => o.k === n.k).map((o) => o.level);
@@ -213,7 +233,8 @@ function TreeCard({ name, rules }: { name: string; rules: Record<string, FieldRu
       <div className="section-title">
         <h3 style={{ margin: 0 }}>{name}</h3>
         <span className="muted small">
-          значений: {tree.size} · используют: {fields.join(', ')}
+          значений: {tree.size}
+          {fields.length ? ` · используют: ${fields.join(', ')}` : ' · проверки сейчас не используют'}
         </span>
       </div>
       {tree.size > 10 && (
@@ -250,6 +271,7 @@ function TreeCard({ name, rules }: { name: string; rules: Record<string, FieldRu
           tree={tree}
           parent={parentNode}
           options={options}
+          checker={checker}
           onClearParent={() => setParent(null)}
           onAdd={(path) => {
             void base.add(path, 'base').then((added) => toast(added ? `Добавлено: ${chainText(path)}` : 'Уже есть в базе'));
@@ -269,8 +291,9 @@ export default function BaseView() {
 }
 
 function BaseTrees() {
-  const { rules, loaded } = useRules();
-  const names = useMemo(() => allTreeNames(rules), [rules]);
+  const { checks, loaded } = useChecks();
+  const checker = useChecker(checks);
+  const names = useTreeNames(checker);
   const [only, setOnly] = useState<string>('');
   if (!loaded) return <div className="loading">Загрузка…</div>;
   const shown = only ? [only] : names;
@@ -291,7 +314,7 @@ function BaseTrees() {
         </select>
       </div>
       {shown.map((n) => (
-        <TreeCard key={n} name={n} rules={rules} />
+        <TreeCard key={n} name={n} checker={checker} />
       ))}
     </div>
   );

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { addPath, useBaseTrees } from '@/core/base/base';
+import { addPath, BASE_DIR, listTrees, useBaseTrees } from '@/core/base/base';
 import { usePeople } from '@/core/people/people';
 import { looksLikeHeader, matchColumns, PERSON_FIELDS } from '@/core/schema/fields';
 import { readTable, type TableData } from '@/core/tables/tables';
@@ -8,33 +8,54 @@ import { useWorkspace, useWorkspaceRevision } from '@/core/workspace/WorkspaceCo
 import type { Workspace } from '@/core/workspace/workspace';
 import { APP_FOLDER, APP_ID } from '../constants';
 import { applyUniqueness, checkPerson, type CheckContext } from '../check/engine';
-import { allTreeNames, resolveRules, rulesDocType, type FieldRule } from '../model/rules';
-import { rowValues, sessionDocType, sessionPath, type AnketaSession, type CellEdit } from '../model/session';
+import { AnketaChecker } from '../lua/checker';
+import { checksDocType, resolveChecks, type AnketaChecks, type CommonCheck, type FieldCheck } from '../model/checks';
+import { applyIgnores, rowValues, sessionDocType, sessionPath, type AnketaSession, type CellEdit } from '../model/session';
 import type { BaseAddition, PersonResult } from '../model/types';
 
-// ---------- Правила ----------
+// ---------- Проверки (код на Lua) ----------
 
-export function useRules() {
+export const CHECKS_PATH = `${APP_FOLDER}/checks.json`;
+
+export function useChecks() {
   const { workspace } = useWorkspace();
-  const store = useMemo(() => (workspace ? getDocStore(workspace, `${APP_FOLDER}/rules.json`, rulesDocType) : null), [workspace]);
+  const store = useMemo(() => (workspace ? getDocStore(workspace, CHECKS_PATH, checksDocType) : null), [workspace]);
   const state = useDocStore(store);
   const data = state?.data;
-  const rules = useMemo(() => resolveRules(data), [data]);
+  const checks = useMemo(() => resolveChecks(data), [data]);
+  const update = (fn: (d: AnketaChecks) => AnketaChecks) => store?.update(fn);
   return {
-    rules,
+    checks,
+    stored: data,
     loaded: !!state?.loaded,
     readOnly: !!state?.tooNew || !!state?.broken,
     error: state?.error,
-    /** Сохранить правило поля целиком. */
-    setField(fieldId: string, rule: FieldRule) {
-      store?.update((d) => ({ ...d, fields: { ...d.fields, [fieldId]: rule } }));
+    /** Сохранить проверку столбца целиком. */
+    setField(fieldId: string, check: FieldCheck) {
+      update((d) => ({ ...d, fields: { ...d.fields, [fieldId]: check } }));
     },
-    /** Вернуть правило поля по умолчанию. */
+    /** Вернуть проверку столбца по умолчанию. */
     resetField(fieldId: string) {
-      store?.update((d) => {
+      update((d) => {
         const fields = { ...d.fields };
         delete fields[fieldId];
         return { ...d, fields };
+      });
+    },
+    setCommon(common: CommonCheck | undefined) {
+      update((d) => {
+        const next = { ...d };
+        if (common) next.common = common;
+        else delete next.common;
+        return next;
+      });
+    },
+    setLibrary(library: string | undefined) {
+      update((d) => {
+        const next = { ...d };
+        if (library === undefined) delete next.library;
+        else next.library = library;
+        return next;
       });
     },
     isCustom(fieldId: string) {
@@ -43,14 +64,39 @@ export function useRules() {
   };
 }
 
+/** Проверяющий модуль для текущих проверок (пересоздаётся, когда проверки меняются). */
+export function useChecker(checks: ReturnType<typeof resolveChecks>): AnketaChecker {
+  return useMemo(() => new AnketaChecker(checks), [checks]);
+}
+
+/** Названия всех древ: какие есть в базе и какие нужны проверкам. */
+export function useTreeNames(checker: AnketaChecker): string[] {
+  const { workspace } = useWorkspace();
+  const rev = useWorkspaceRevision(workspace ? workspace.systemPath(BASE_DIR) : '\u0000');
+  const [onDisk, setOnDisk] = useState<string[]>([]);
+  useEffect(() => {
+    if (!workspace) return;
+    let alive = true;
+    listTrees(workspace)
+      .then((names) => alive && setOnDisk(names))
+      .catch(() => undefined);
+    return () => {
+      alive = false;
+    };
+  }, [workspace, rev]);
+  const needed = useMemo(() => checker.treeNames(), [checker]);
+  return useMemo(() => [...new Set([...needed, ...onDisk])].sort(), [needed, onDisk]);
+}
+
 // ---------- Контекст проверки ----------
 
 export function useCheckContext(): CheckContext & { loaded: boolean } {
-  const { rules } = useRules();
-  const names = useMemo(() => allTreeNames(rules), [rules]);
+  const { checks } = useChecks();
+  const checker = useChecker(checks);
+  const names = useTreeNames(checker);
   const base = useBaseTrees(names);
   const people = usePeople();
-  return useMemo(() => ({ rules, trees: base.trees, people: people.records, loaded: base.loaded && people.loaded }), [rules, base, people.records, people.loaded]);
+  return useMemo(() => ({ checker, trees: base.trees, people: people.records, loaded: base.loaded && people.loaded }), [checker, base, people.records, people.loaded]);
 }
 
 /** Подтвердить: добавить путь в базу (и в «Предложения в базу»). */
@@ -165,8 +211,35 @@ export function useSession(fileName: string) {
           return { ...s, confirmed };
         });
       },
+      /** Игнорировать замечание в ячейке (null — вернуть). */
+      ignore(row: number, col: number, value: string, text: string, on: boolean) {
+        update((s) => {
+          const ignored = { ...(s.ignored ?? {}) };
+          const r = { ...(ignored[row] ?? {}) };
+          const cur = r[col]?.value === value ? r[col].texts : [];
+          const texts = on ? [...new Set([...cur, text])] : cur.filter((t) => t !== text);
+          if (texts.length) r[col] = { value, texts };
+          else delete r[col];
+          if (Object.keys(r).length) ignored[row] = r;
+          else delete ignored[row];
+          return { ...s, ignored };
+        });
+      },
+      /** Игнорировать все ошибки анкеты. */
+      ignoreRow(row: number, on: boolean) {
+        update((s) => {
+          const rows = new Set(s.ignoredRows ?? []);
+          if (on) rows.add(row);
+          else rows.delete(row);
+          return { ...s, ignoredRows: [...rows].sort((a, b) => a - b) };
+        });
+      },
+      /** Игнорировать все ошибки таблицы. */
+      ignoreTable(on: boolean) {
+        update((s) => ({ ...s, ignoreAll: on || undefined }));
+      },
       resetAll() {
-        update((s) => ({ ...s, edits: {}, reviewed: [], confirmed: {} }));
+        update((s) => ({ ...s, edits: {}, reviewed: [], confirmed: {}, ignored: {}, ignoredRows: [], ignoreAll: undefined }));
       },
     };
   }, [session, state?.loaded, state?.tooNew, state?.broken, state?.error, store]);
@@ -210,6 +283,7 @@ export function useTableModel(table: TableData, session: AnketaSession, ctx: Che
     [values, columns, ctx, confirmed],
   );
 
-  const results = useMemo(() => applyUniqueness(base, values, columns, names, ctx), [base, values, columns, names, ctx]);
+  const unique = useMemo(() => applyUniqueness(base, values, columns, names, ctx), [base, values, columns, names, ctx]);
+  const results = useMemo(() => applyIgnores(unique, session), [unique, session.ignored, session.ignoredRows, session.ignoreAll]);
   return { columns, values, names, results };
 }

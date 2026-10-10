@@ -1,4 +1,4 @@
-import { BookCheck, Check, CircleAlert, Copy, Database, RotateCcw, Star, Wand2, XCircle } from 'lucide-react';
+import { BookCheck, Check, CircleAlert, Copy, Database, Eye, EyeOff, Info, RotateCcw, Star, Wand2, XCircle } from 'lucide-react';
 import { normalizeHeader, type FieldDef } from '@/core/schema/fields';
 import { Menu } from '@/ui/Menu';
 import type { FieldResult, FieldStatus, Issue } from '../model/types';
@@ -20,6 +20,8 @@ interface Props {
   onConfirmBase: () => void;
   onSaveVar: () => void;
   onCopy: () => void;
+  /** Игнорировать замечание (или вернуть). */
+  onIgnore: (text: string, on: boolean) => void;
 }
 
 const STATUS_LABEL: Record<FieldStatus, string> = {
@@ -28,8 +30,11 @@ const STATUS_LABEL: Record<FieldStatus, string> = {
   warn: 'Нужно подтвердить',
 };
 
-export function IssueIcon({ issue }: { issue: Pick<Issue, 'level'> }) {
+export function IssueIcon({ issue }: { issue: Pick<Issue, 'level' | 'resolved' | 'ignored'> }) {
+  if (issue.ignored) return <EyeOff size={16} className="ic ic--muted" aria-label="Проигнорировано" />;
+  if (issue.resolved) return <Check size={16} className="ic ic--ok" aria-label="Проверено" />;
   if (issue.level === 'error') return <XCircle size={16} className="ic ic--error" aria-label="Ошибка" />;
+  if (issue.level === 'info') return <Info size={16} className="ic ic--muted" aria-label="Совет" />;
   return <CircleAlert size={16} className="ic ic--confirm" aria-label="Предупреждение" />;
 }
 
@@ -40,13 +45,13 @@ function StatusIcon({ status }: { status: FieldStatus }) {
   return <CircleAlert size={18} className="ic ic--confirm" aria-label={label} />;
 }
 
-export function FieldRow({ num, field, def, header, original, current, readOnly, onChange, onConfirmPerson, onConfirmBase, onSaveVar, onCopy }: Props) {
+export function FieldRow({ num, field, def, header, original, current, readOnly, onChange, onConfirmPerson, onConfirmBase, onSaveVar, onCopy, onIgnore }: Props) {
   const status = field.status;
   const id = `f-${field.col}`;
   const changed = current !== original;
   const label = def?.label ?? header;
   const long = current.length > 50 || field.parts !== undefined;
-  const blocking = field.issues.some((i) => i.level === 'error' && !i.confirmable);
+  const blocking = field.issues.some((i) => i.level === 'error' && !i.confirmable && !i.ignored);
   const otherPlace = field.issues.some((i) => i.confirmable);
   const base = field.confirm?.base;
   const person = field.confirm?.person;
@@ -125,16 +130,31 @@ export function FieldRow({ num, field, def, header, original, current, readOnly,
       {field.issues.length > 0 && (
         <ul className="issues">
           {field.issues.map((issue, k) => (
-            <li key={k} className={`issue issue--${issue.level}`}>
+            <li key={k} className={`issue issue--${issue.level}${issue.ignored ? ' issue--ignored' : ''}${issue.resolved ? ' issue--resolved' : ''}`}>
               <IssueIcon issue={issue} />
-              <span className="issue__msg">{issue.text}</span>
-              {issue.fix !== undefined && issue.fix !== current && issue.fix !== field.fix && (
-                <span className="issue__actions">
+              <span className="issue__msg">
+                {issue.text}
+                {issue.resolved && <span className="faint"> — проверено</span>}
+                {issue.ignored && <span className="faint"> — проигнорировано</span>}
+                {issue.script && <span className="faint"> Исправьте код в «Шаблоны и правила».</span>}
+              </span>
+              <span className="issue__actions">
+                {issue.fix !== undefined && issue.fix !== current && issue.fix !== field.fix && !issue.ignored && (
                   <button className="btn btn--sm" onClick={() => onChange(issue.fix!)} disabled={readOnly}>
                     Исправить
                   </button>
-                </span>
-              )}
+                )}
+                {issue.level !== 'info' && !issue.script && !issue.resolved && (
+                  <button
+                    className="btn btn--sm btn--ghost"
+                    onClick={() => onIgnore(issue.text, !issue.ignored)}
+                    disabled={readOnly}
+                    data-tip={issue.ignored ? 'Снова учитывать это замечание' : 'Не учитывать это замечание у этого значения'}
+                  >
+                    {issue.ignored ? <Eye size={14} /> : <EyeOff size={14} />} {issue.ignored ? 'Вернуть' : 'Игнорировать'}
+                  </button>
+                )}
+              </span>
             </li>
           ))}
         </ul>

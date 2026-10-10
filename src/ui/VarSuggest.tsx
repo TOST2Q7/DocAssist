@@ -21,6 +21,8 @@ type Editable = HTMLInputElement | HTMLTextAreaElement;
 const TEXT_TYPES = new Set(['text', 'search', 'email', 'tel', 'url', '']);
 
 function isEditable(el: EventTarget | null): el is Editable {
+  // data-novars — у поля свои подсказки (окно кода).
+  if (el instanceof HTMLElement && el.dataset.novars !== undefined) return false;
   if (el instanceof HTMLTextAreaElement) return !el.readOnly && !el.disabled;
   if (el instanceof HTMLInputElement) return TEXT_TYPES.has(el.type) && !el.readOnly && !el.disabled;
   return false;

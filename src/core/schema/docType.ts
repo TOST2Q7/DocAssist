@@ -2,14 +2,16 @@
  * Версионированные JSON-документы — основа переносимости данных между версиями.
  *
  * Каждый служебный JSON-файл хранится в «конверте»:
- *   { "$type": "docassist/variables", "$version": 2, "$app": "0.3.0", "$savedAt": "...", "data": { ... } }
+ *   { "$type": "docassist/variables", "$version": 1, "$app": "0.5.0", "$savedAt": "...", "data": { ... } }
  *
  * - $type    — что это за данные (по нему любая версия понимает, что лежит в файле);
  * - $version — версия схемы данных (не приложения!);
  * - data     — сами данные.
  *
- * Когда схема меняется, увеличиваем version и добавляем миграцию N → N+1.
- * Старые файлы при чтении поднимаются по цепочке миграций до текущей версии.
+ * Когда схема меняется после выпуска в main, увеличиваем version и добавляем миграцию N → N+1:
+ * старые файлы при чтении поднимаются по цепочке миграций до текущей версии.
+ * Форматы тестовых версий (до выпуска в main) не переносятся: такой файл читается как пустой
+ * и перезаписывается при первом сохранении.
  * Если файл создан более новой версией приложения — читаем «как есть»
  * и запрещаем перезапись, чтобы не потерять данные.
  */
@@ -31,9 +33,6 @@ export interface DocType<T> {
 }
 
 export function defineDocType<T>(def: DocType<T>): DocType<T> {
-  for (let v = 1; v < def.version; v++) {
-    if (!def.migrations[v]) throw new Error(`${def.type}: нет миграции ${v} → ${v + 1}`);
-  }
   return def;
 }
 
@@ -41,6 +40,8 @@ export interface Upgraded<T> {
   data: T;
   /** Версия, из которой данные были подняты (если была миграция). */
   migratedFrom?: number;
+  /** Файл старого формата без миграции (тестовая версия) — начат заново. */
+  reset?: boolean;
   /** Файл создан более новой версией — перезаписывать нельзя. */
   tooNew: boolean;
 }
@@ -68,7 +69,7 @@ export function upgrade<T>(dt: DocType<T>, raw: unknown): Upgraded<T> {
   const from = version;
   while (version < dt.version) {
     const m = dt.migrations[version];
-    if (!m) throw new Error(`${dt.type}: нет миграции ${version} → ${version + 1}`);
+    if (!m) return { data: dt.empty(), migratedFrom: from, reset: true, tooNew: false };
     data = m(data);
     version++;
   }

@@ -1,174 +1,29 @@
-import { BaseTree, chainText, stepText, type Step } from '@/core/base/tree';
+import type { BaseTree } from '@/core/base/tree';
 import { FIO_FIELDS, fioKey, fioText, type PersonRecord } from '@/core/people/people';
 import { FIELD_BY_ID } from '@/core/schema/fields';
-import { blocksMask, describeFormat, matcher } from '@/shared/cell/blocks';
-import { suggestFix } from '@/shared/cell/format';
-import { parseCell } from '@/shared/cell/parse';
-import { parseOrder } from '@/shared/cell/template';
-import { walk, type Level as WalkLevel } from '@/shared/cell/walk';
-import { OTHER_RULE, treeNameOf, type FieldRule } from '../model/rules';
-import { countIssues, isReady, type FieldResult, type Issue, type PartView, type PersonResult } from '../model/types';
+import type { AnketaChecker } from '../lua/checker';
+import { countIssues, isReady, statusOf, type FieldResult, type Issue, type PersonResult } from '../model/types';
 
 /*
- * Проверка анкеты — только формат из блоков, списки «ключ:значение» и древо:
- *   - формат: значение должно подходить под блоки поля (или под конструктор ячейки-древа);
- *   - список и древо: значение должно быть в базе (внутри своего родителя); нового нет — предупреждение и «Подтвердить»;
- *   - индивидуальное (паспорт, СНИЛС, телефон…): всегда предупреждение и отдельная галочка у каждого человека;
- *   - уникальное: повтор у другого человека (в таблице или в базе людей) — ошибка.
+ * Проверка анкеты: каждую ячейку проверяет код на Lua (см. lua/checker.ts) — формат, база, древо,
+ * галочки «Проверено». Здесь — то, что касается всей таблицы: уникальность значений и база людей.
  */
 
 export interface CheckContext {
-  rules: Record<string, FieldRule>;
+  checker: AnketaChecker;
   trees: Map<string, BaseTree>;
   people: PersonRecord[];
 }
 
-const EMPTY_TREE = new BaseTree();
-
 const labelOf = (fieldId: string) => FIELD_BY_ID.get(fieldId)?.label ?? fieldId;
 
 function finish(r: FieldResult): FieldResult {
-  const hasError = r.issues.some((i) => i.level === 'error');
-  const needs = !!r.confirm && ((r.confirm.person && !r.confirmed) || !!r.confirm.base);
-  r.status = hasError ? 'error' : needs ? 'warn' : 'ok';
+  r.status = statusOf(r.issues);
   return r;
 }
 
-/** Заменить в значении часть [start, end) — для исправления одной части ячейки. */
-const splice = (value: string, start: number, end: number, text: string) => value.slice(0, start) + text + value.slice(end);
-const formatPart = (v: string, t?: string, a?: boolean) => (!t ? v : a ? `${v} ${t}` : `${t} ${v}`);
-
-function checkTree(r: FieldResult, rule: FieldRule, fieldId: string, ctx: CheckContext) {
-  const t = rule.template;
-  if (!t || !t.keys.length) {
-    r.issues.push({ level: 'error', text: 'В правилах не настроен конструктор ячейки' });
-    return;
-  }
-  const parsed = parseCell(r.value, t);
-  for (const i of parsed.issues) r.issues.push({ level: 'error', text: i.text, span: i.span });
-  if (parsed.canonical !== undefined && parsed.canonical !== r.value) r.fix = parsed.canonical;
-
-  const { order, error } = parseOrder(t.order, t.keys.length);
-  const levelOfKey = new Map(order.map((k, i) => [k, i]));
-  const view = (state: (k: number | undefined) => PartView['state']): PartView[] =>
-    parsed.blocks.map((b) => ({ title: b.key !== undefined ? t.keys[b.key].title : '?', text: b.text, state: !b.ok ? 'error' : state(b.key) }));
-
-  if (parsed.issues.length) {
-    r.parts = view(() => 'plain');
-    return;
-  }
-  if (error) {
-    r.issues.push({ level: 'error', text: `В правилах: порядок древа — ${error}` });
-    r.parts = view(() => 'plain');
-    return;
-  }
-
-  const treeName = treeNameOf(fieldId, ctx.rules) ?? t.tree;
-  const tree = ctx.trees.get(treeName) ?? EMPTY_TREE;
-  const levels: WalkLevel[] = order.map((k) => ({ k: t.keys[k].id, step: parsed.steps[k], single: t.keys[k].single }));
-  const w = walk(tree, levels);
-  const blockOfKey = (k: number) => parsed.blocks.find((b) => b.key === k);
-
-  for (const wi of w.issues) {
-    const key = order[wi.at];
-    const b = blockOfKey(key);
-    const fix = wi.fix && b ? splice(r.value, b.start, b.end, formatPart(wi.fix.v, wi.fix.t, wi.fix.a)) : undefined;
-    r.issues.push({ level: wi.level, text: wi.text, span: b ? [b.start, b.end] : undefined, fix, confirmable: wi.confirmable });
-  }
-
-  r.parts = view((k) => {
-    if (k === undefined) return 'error';
-    const li = levelOfKey.get(k);
-    if (li === undefined) return 'off';
-    return w.status[li] === 'new' ? 'new' : 'known';
-  });
-
-  if (w.addPath.length) {
-    const fresh = w.addPath.slice(w.knownPath.length);
-    const first = blockOfKey(order[w.status.indexOf('new')]);
-    r.issues.push({
-      level: 'warn',
-      text: `Нет в базе «${treeName}»: ${fresh.map(stepText).join(' → ')}${w.knownPath.length ? ` (внутри: ${chainText(w.knownPath)})` : ''}. Проверьте и подтвердите`,
-      span: first ? [first.start, first.end] : undefined,
-    });
-    r.confirm = { person: !!r.confirm?.person, base: { tree: treeName, path: w.addPath, label: chainText(w.addPath), known: w.knownPath.length } };
-  }
-}
-
-function checkList(r: FieldResult, rule: FieldRule, fieldId: string, row: Map<string, string>, ctx: CheckContext) {
-  const treeName = treeNameOf(fieldId, ctx.rules) ?? labelOf(fieldId);
-  const tree = ctx.trees.get(treeName) ?? EMPTY_TREE;
-  const step: Step = { k: fieldId, v: r.value };
-  const levels: WalkLevel[] = [];
-  let parentNote = '';
-  if (rule.within) {
-    const pv = row.get(rule.within)?.trim() ?? '';
-    const prule = ctx.rules[rule.within];
-    const ok = pv !== '' && (!prule || matcher(prule.format).test(pv));
-    levels.push({ k: rule.within, step: ok ? { k: rule.within, v: pv } : null });
-    if (ok) parentNote = ` для «${labelOf(rule.within)}: ${pv}»`;
-  }
-  levels.push({ k: fieldId, step });
-  const w = walk(tree, levels);
-  if (w.addPath.length) {
-    const elsewhere = rule.within ? tree.all(fieldId, r.value).map((n) => n.parent?.v).filter(Boolean) : [];
-    r.issues.push({
-      level: 'warn',
-      text: `Нет в базе${parentNote}. Проверьте и подтвердите${elsewhere.length ? ` (это значение есть в базе для: ${elsewhere.slice(0, 3).join(', ')})` : ''}`,
-    });
-    r.confirm = { person: !!r.confirm?.person, base: { tree: treeName, path: w.addPath, label: chainText(w.addPath), known: w.knownPath.length } };
-  }
-}
-
-export function checkField(fieldId: string | null, col: number, value: string, row: Map<string, string>, ctx: CheckContext, confirmedValue?: string): FieldResult {
-  const rule = (fieldId && ctx.rules[fieldId]) || OTHER_RULE;
-  const r: FieldResult = { col, fieldId, value, status: 'ok', issues: [], confirmed: false };
-
-  if (value === '') {
-    if (rule.required) {
-      r.issues.push({ level: 'error', text: 'Пусто — поле обязательно' });
-      if (rule.example) r.example = rule.example;
-    }
-    return finish(r);
-  }
-  if (value.trim() === '') {
-    r.issues.push({ level: 'error', text: 'Только пробелы', span: [0, value.length], fix: rule.required ? undefined : '' });
-    return finish(r);
-  }
-
-  const person = rule.confirm || rule.unique;
-  if (person) {
-    r.confirm = { person: true };
-    r.confirmed = confirmedValue === value;
-  }
-
-  if (rule.kind === 'tree' && fieldId) {
-    checkTree(r, rule, fieldId, ctx);
-  } else {
-    const m = matcher(rule.format);
-    if (!m.test(value)) {
-      const fix = suggestFix(value, m.test, blocksMask(rule.format));
-      const spaces = value !== value.trim() || /\s{2}/.test(value) ? ' — есть лишние пробелы' : '';
-      const why = m.explain(value);
-      const detail = spaces || (why && !why.trivial ? ` — ${why.text}` : '');
-      r.issues.push({ level: 'error', text: `Не по формату: ${describeFormat(rule.format)}${detail}`, span: [0, value.length], fix: fix ?? undefined });
-      if (fix) r.fix = fix;
-    } else if (rule.kind === 'list' && fieldId) {
-      checkList(r, rule, fieldId, row, ctx);
-    }
-  }
-
-  if (rule.example && r.issues.some((i) => i.level === 'error' && !i.confirmable)) r.example = rule.example;
-  if (person && !r.confirmed && !r.issues.some((i) => i.level === 'error' && !i.confirmable)) {
-    r.issues.push({ level: 'warn', person: true, text: rule.unique ? 'Уникальное значение — проверьте и поставьте галочку' : 'Индивидуальное значение — проверьте и поставьте галочку' });
-  }
-  return finish(r);
-}
-
 export function checkPerson(rowIndex: number, values: string[], columns: (string | null)[], ctx: CheckContext, confirmed: Record<string, string> = {}): PersonResult {
-  const row = new Map<string, string>();
-  columns.forEach((id, i) => id && row.set(id, values[i] ?? ''));
-  const fields = values.map((v, col) => checkField(columns[col], col, v ?? '', row, ctx, confirmed[col]));
+  const fields = ctx.checker.checkRow({ row: rowIndex, values: values.map((v) => v ?? ''), columns, confirmed }, { trees: ctx.trees });
   const counts = countIssues(fields);
   return { row: rowIndex, fields, counts, ready: isReady(counts) };
 }
@@ -190,14 +45,15 @@ export function applyUniqueness(results: PersonResult[], values: string[][], col
   const who = (r: number) => `строка ${r + 1}${names[r] ? ` (${names[r]})` : ''}`;
 
   columns.forEach((fieldId, col) => {
-    const rule = fieldId ? ctx.rules[fieldId] : undefined;
-    if (!fieldId || !rule?.unique) return;
-    const withCols = (rule.uniqueWith ?? []).map((id) => ({ id, col: columns.indexOf(id) })).filter((x) => x.col >= 0);
+    // Уникальность просит код столбца: unique(). Берём из первой строки, где просили.
+    const req = results.map((res) => res.fields[col]?.unique).find(Boolean);
+    if (!fieldId || !req) return;
+    const withCols = req.with.map((id) => ({ id, col: columns.indexOf(id) })).filter((x) => x.col >= 0);
     const keyOf = (r: number) => [values[r][col], ...withCols.map((w) => values[r][w.col] ?? '')].map(norm).join('\u0001');
     const groups = new Map<string, number[]>();
     results.forEach((res, r) => {
       const f = res.fields[col];
-      if (!f || !f.value.trim() || f.issues.some((i) => i.level === 'error' && !i.confirmable)) return;
+      if (!f?.unique || !f.value.trim() || f.issues.some((i) => i.level === 'error' && !i.confirmable)) return;
       const k = keyOf(r);
       groups.set(k, [...(groups.get(k) ?? []), r]);
     });
@@ -209,7 +65,7 @@ export function applyUniqueness(results: PersonResult[], values: string[][], col
       }
     }
     // База людей: значение уже есть у другого человека.
-    if (fio.has(fieldId) || withCols.some((w) => fio.has(w.id))) return;
+    if (!req.people || fio.has(fieldId) || withCols.some((w) => fio.has(w.id))) return;
     for (const [k, rows] of groups) {
       for (const rec of ctx.people) {
         const recKey = [rec.fields[fieldId] ?? '', ...withCols.map((w) => rec.fields[w.id] ?? '')].map(norm).join('\u0001');

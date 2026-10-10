@@ -1,7 +1,7 @@
 {
   "name": "docassist",
   "private": true,
-  "version": "0.4.0",
+  "version": "0.5.0",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -13,6 +13,7 @@
     "test": "vitest run"
   },
   "dependencies": {
+    "fengari": "^0.1.5",
     "lucide-react": "^0.469.0",
     "react": "^19.3.0",
     "react-dom": "^19.3.0",

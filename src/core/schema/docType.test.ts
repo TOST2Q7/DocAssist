@@ -42,6 +42,11 @@ describe('версионирование документов', () => {
     expect(r.tooNew).toBe(true);
   });
 
+  it('старый формат без миграции (тестовая версия) — начинается заново', () => {
+    const fresh = defineDocType<V3>({ type: 'test/vars', version: 3, migrations: {}, empty: () => ({ items: [] }) });
+    expect(upgrade(fresh, { $type: 'test/vars', $version: 2, data: { old: true } })).toEqual({ data: { items: [] }, migratedFrom: 2, reset: true, tooNew: false });
+  });
+
   it('чужой тип документа — ошибка', () => {
     expect(() => upgrade(dt, { $type: 'other', $version: 1, data: {} })).toThrow();
   });

@@ -1,4 +1,5 @@
 import { BookCheck, ChevronLeft, ChevronRight, Eye, EyeOff, List, SearchCheck, Star, UserPlus, Wand2 } from 'lucide-react';
+import { Alert } from '@/ui/Alert';
 import { useMemo, useState } from 'react';
 import { usePeople } from '@/core/people/people';
 import { FIELD_BY_ID, PERSON_FIELDS } from '@/core/schema/fields';
@@ -31,6 +32,13 @@ interface Props {
   onConfirm: (col: number, value: string | null) => void;
   onConfirmMany: (items: { row: number; col: number; value: string }[]) => void;
   onToggleReviewed: () => void;
+  /** Игнорировать замечание в ячейке. */
+  onIgnore: (col: number, text: string, on: boolean) => void;
+  /** Проигнорированы все замечания анкеты. */
+  rowIgnored: boolean;
+  onIgnoreRow: (on: boolean) => void;
+  /** Проигнорированы все замечания таблицы. */
+  tableIgnored: boolean;
 }
 
 /** Исправления для анкеты: каждое поле, у которого есть правильная запись, отличная от написанного. */
@@ -47,7 +55,7 @@ export function personFields(values: string[], columns: (string | null)[]): Reco
   return out;
 }
 
-export function PersonView({ model, headers, originals, row, reviewed, readOnly, fileLabel, onSelect, onChangeCell, onApply, onConfirm, onConfirmMany, onToggleReviewed }: Props) {
+export function PersonView({ model, headers, originals, row, reviewed, readOnly, fileLabel, onSelect, onChangeCell, onApply, onConfirm, onConfirmMany, onToggleReviewed, onIgnore, rowIgnored, onIgnoreRow, tableIgnored }: Props) {
   const result = model.results[row];
   const values = model.values[row];
   const name = model.names[row] || `Строка ${row + 1}`;
@@ -133,12 +141,27 @@ export function PersonView({ model, headers, originals, row, reviewed, readOnly,
           <button className="btn" onClick={() => setSaveVar({ value: fio, label: `ФИО: ${fio}`, kind: 'fio' })} disabled={!fio}>
             <Star size={16} /> ФИО в переменные
           </button>
+          <button
+            className="btn"
+            onClick={() => onIgnoreRow(!rowIgnored)}
+            disabled={readOnly || tableIgnored}
+            aria-pressed={rowIgnored}
+            data-tip={rowIgnored ? 'Снова учитывать замечания этой анкеты' : 'Считать анкету готовой, несмотря на ошибки и предупреждения'}
+          >
+            {rowIgnored ? <Eye size={16} /> : <EyeOff size={16} />} {rowIgnored ? 'Вернуть замечания анкеты' : 'Игнорировать все замечания'}
+          </button>
           <label className="check small">
             <input type="checkbox" checked={onlyIssues} onChange={(e) => setOnlyIssues(e.target.checked)} />
             Только с замечаниями
           </label>
         </div>
       </div>
+      {(rowIgnored || tableIgnored) && (
+        <Alert kind="warning">
+          {tableIgnored ? 'Замечания всей таблицы проигнорированы' : 'Замечания этой анкеты проигнорированы'} — они видны зачёркнутыми и не мешают
+          готовности. Ошибки в коде проверки не игнорируются.
+        </Alert>
+      )}
 
       <div className="fields">
         {visible.map((f) => {
@@ -156,6 +179,7 @@ export function PersonView({ model, headers, originals, row, reviewed, readOnly,
                 onChange={(v) => onChangeCell(f.col, v)}
                 onConfirmPerson={(on) => onConfirm(f.col, on ? (values[f.col] ?? '') : null)}
                 onConfirmBase={() => void confirmField(f)}
+                onIgnore={(text, on) => onIgnore(f.col, text, on)}
                 onCopy={() => navigator.clipboard?.writeText(values[f.col] ?? '').then(() => toast('Скопировано'))}
                 onSaveVar={() =>
                   setSaveVar({

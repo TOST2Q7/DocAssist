@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { BaseTree, removeNodeFromEntries, type BaseEntry, type Step } from '@/core/base/tree';
 import { findAbbreviations } from './abbr';
-import { blocksMask, matcher, presetBlocks } from './blocks';
+import { textlib as lib } from '@/core/lua/textlib';
 import { fillMask, suggestFix } from './format';
 import { parseCell } from './parse';
 import { birthplaceTemplate, parseOrder, registrationTemplate, residenceTemplate, type CellTemplate } from './template';
@@ -176,46 +176,72 @@ describe('древо', () => {
   });
 });
 
-describe('формат и исправления', () => {
-  const re = (id: string) => matcher(presetBlocks(id));
-  const fix = (v: string, id: string) => suggestFix(v, re(id).test, blocksMask(presetBlocks(id)));
-  it('телефон без скобок — ошибка, исправление по цифрам', () => {
-    expect(re('phone').test('89000000000')).toBe(false);
-    expect(fix('89000000000', 'phone')).toBe('8(900)000-00-00');
-    expect(fix('+7 900 000 00 00', 'phone')).toBe('8(900)000-00-00');
+describe('готовые функции lib.* и исправления', () => {
+  const fix = (v: string, check: (x: string) => boolean, mask?: string) => suggestFix(v, check, mask);
+  it('телефон без скобок — исправление по цифрам', () => {
+    expect(lib.is_phone('89000000000')).toBe(false);
+    expect(fix('89000000000', lib.is_phone, '8(999)999-99-99')).toBe('8(900)000-00-00');
+    expect(lib.fix_phone('+7 900 000 00 00')).toBe('8(900)000-00-00');
   });
-  it('даты: несуществующие не проходят', () => {
-    expect(re('date').test('29.02.2008')).toBe(true);
-    expect(re('date').test('29.02.2007')).toBe(false);
-    expect(re('date').test('31.04.2007')).toBe(false);
-    expect(re('date').test('00.00.0000')).toBe(false);
-    expect(fix('1.1.2000', 'date')).toBe('01.01.2000');
-    expect(fix('01012000', 'date')).toBe('01.01.2000');
-    expect(fix('1.1.00', 'date')).toBe('01.01.2000');
+  it('даты: несуществующие не проходят, короткие дописываются', () => {
+    expect(lib.is_date('29.02.2008')).toBe(true);
+    expect(lib.is_date('29.02.2007')).toBe(false);
+    expect(lib.is_date('31.04.2007')).toBe(false);
+    expect(lib.is_date('00.00.0000')).toBe(false);
+    expect(lib.is_date('01.01.1950', 1960, 2010)).toBe(false);
+    expect(fix('1.1.2000', lib.is_date)).toBe('01.01.2000');
+    expect(lib.fix_date('1/1/00')).toBe('01.01.2000');
+    expect(lib.age('01.06.2000', '31.05.2014')).toBe(13);
+    expect(lib.before('01.01.2000', '02.01.2000')).toBe(true);
   });
-  it('почта: значение@значение.значение строчными', () => {
-    expect(re('email').test('Ivanov@example.com')).toBe(false);
-    expect(fix('Ivanov@example.com', 'email')).toBe('ivanov@example.com');
-    expect(re('email').test('ivanov@mail')).toBe(false);
+  it('почта: строгая — строчными, мягкая — любые', () => {
+    expect(lib.is_email('Ivanov@example.com')).toBe(false);
+    expect(lib.is_email_any('Ivanov@example.com')).toBe(true);
+    expect(lib.is_email_any('ivanov@mail')).toBe(false);
   });
   it('ВК: только vk.ru и vk.com', () => {
-    expect(re('vk').test('https://vk.ru/username')).toBe(true);
-    expect(re('vk').test('https://vk.com/username')).toBe(true);
-    expect(re('vk').test('vk.com/id1')).toBe(false);
-    expect(fix('vk.com/id1', 'vk')).toBe('https://vk.com/id1');
+    expect(lib.is_vk('https://vk.ru/username')).toBe(true);
+    expect(lib.is_vk('vk.com/id1')).toBe(false);
+    expect(lib.fix_vk('vk.com/id1')).toBe('https://vk.com/id1');
   });
-  it('отряд — в «ёлочках»', () => {
-    expect(re('squad').test('«Название»')).toBe(true);
-    expect(fix('"Название"', 'squad')).toBe('«Название»');
-    expect(fix('Название', 'squad')).toBe('«Название»');
+  it('кавычки и «ёлочки»', () => {
+    expect(lib.in_guillemets('«Название»')).toBe(true);
+    expect(fix('"Название"', lib.in_guillemets)).toBe('«Название»');
+    expect(fix('Название', lib.in_guillemets)).toBe('«Название»');
+    expect(lib.fix_quotes('ГБПОУ  "Колледж»')).toBe('ГБПОУ «Колледж»');
   });
   it('лишнее вокруг цифр убирается: «2 курс» → «2», «1234 5678 9012» → ИНН', () => {
-    expect(fix('2 курс', 'course')).toBe('2');
-    expect(fix(' 2 ', 'course')).toBe('2');
-    expect(fix('1234 5678 9012', 'inn')).toBe('123456789012');
+    expect(fix('2 курс', (v) => /^[1-6]$/.test(v))).toBe('2');
+    expect(fix('1234 5678 9012', (v) => /^\d{12}$/.test(v))).toBe('123456789012');
   });
-  it('кавычки', () => {
-    expect(fix('ГБПОУ "Колледж»', 'quoted')).toBe('ГБПОУ «Колледж»');
+  it('буквы: латиница/кириллица, «й» из двух символов', () => {
+    expect(lib.has_latin('Ивaнов')).toBe(true);
+    expect(lib.only_cyrillic('Иванов-Петров 2')).toBe(true);
+    expect(lib.only_latin('name_1')).toBe(true);
+    expect(lib.mixed_words('Ивaнов Пётр IT-технологии')).toEqual(['Ивaнов']);
+    expect(lib.fix_letters('Ивaнов')).toBe('Иванов');
+    expect(lib.fix_letters('Ivаnov')).toBe('Ivanov');
+    expect(lib.odd_letters('Андреи\u0306')).toBe(true);
+    expect(lib.fix_letters('Андреи\u0306')).toBe('Андрей');
+    expect(lib.odd_letters('Андрей')).toBe(false);
+  });
+  it('шаблоны цифр, число, текст', () => {
+    expect(lib.mask('000-000-000 00', '999-999-999 99')).toBe(true);
+    expect(lib.mask('000-000-00000', '999-999-999 99')).toBe(false);
+    expect(lib.mask_example('8(999)999-99-99')).toBe('8(000)000-00-00');
+    expect(lib.number('2,5')).toBe(2.5);
+    expect(lib.number('2 курс')).toBeNull();
+    expect(lib.sub('ИС-21', 4, 5)).toBe('21');
+    expect(lib.sub('Привет', -3)).toBe('вет');
+    expect(lib.capitalize('иВАНОВ-петров')).toBe('Иванов-Петров');
+    expect(lib.len('ёжик')).toBe(4);
+  });
+  it('контрольные числа СНИЛС и ИНН', () => {
+    expect(lib.snils_ok('112-233-445 95')).toBe(true);
+    expect(lib.snils_ok('112-233-445 96')).toBe(false);
+    expect(lib.inn_ok('500100732259')).toBe(true);
+    expect(lib.inn_ok('500100732258')).toBe(false);
+    expect(lib.inn_ok('7707083893')).toBe(true);
   });
   it('маска', () => {
     expect(fillMask('123456789 01', '999-999-999 99')).toBe('123-456-789 01');

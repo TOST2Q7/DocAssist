@@ -3,8 +3,10 @@ import { useState } from 'react';
 import { Link, Outlet } from 'react-router-dom';
 import { useRegisterSW } from 'virtual:pwa-register/react';
 import { APP_VERSION, IS_SINGLE_FILE } from '@/core/config';
+import { usePrefsSync } from '@/core/settings/prefs';
 import { useUpdateCheck } from '@/core/update/checkUpdate';
 import { Header } from './Header';
+import { Tooltip } from './Tooltip';
 import { VarSuggest } from './VarSuggest';
 
 /** Версия-файл сама не обновляется — предлагаем скачать новую со страницы релизов. */
@@ -53,6 +55,7 @@ function UpdateBanner() {
 }
 
 export function Layout() {
+  usePrefsSync();
   return (
     <div className="app-shell">
       <Header />
@@ -61,6 +64,7 @@ export function Layout() {
         <Outlet />
       </main>
       <VarSuggest />
+      <Tooltip />
       <footer className="footer">
         <div className="footer__inner">
           <span>DocAssist v{APP_VERSION} · работает локально, данные не покидают устройство</span>

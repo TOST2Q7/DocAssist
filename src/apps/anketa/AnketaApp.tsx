@@ -2,6 +2,7 @@ import { useCallback, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import BaseView from './ui/BaseView';
 import { FilePicker } from './ui/FilePicker';
+import { LuaHelp } from './ui/LuaHelp';
 import { PasteDialog, usePasteTable } from './ui/PasteTable';
 import { RulesView } from './ui/RulesView';
 import { Workbench } from './ui/Workbench';
@@ -15,7 +16,7 @@ import './anketa.css';
 export default function AnketaApp() {
   const [params, setParams] = useSearchParams();
   const tabParam = params.get('tab');
-  const tab = tabParam === 'rules' || tabParam === 'base' ? tabParam : 'check';
+  const tab = tabParam === 'rules' || tabParam === 'base' || tabParam === 'help' ? tabParam : 'check';
   const file = params.get('file');
   const sheet = params.get('sheet') ?? undefined;
   const rowParam = params.get('row');
@@ -53,10 +54,15 @@ export default function AnketaApp() {
           <button role="tab" aria-selected={tab === 'base'} aria-pressed={tab === 'base'} onClick={() => set({ tab: 'base' })}>
             База
           </button>
+          <button role="tab" aria-selected={tab === 'help'} aria-pressed={tab === 'help'} onClick={() => set({ tab: 'help' })}>
+            Справка
+          </button>
         </div>
       </div>
       {tab === 'rules' ? (
-        <RulesView />
+        <RulesView onHelp={() => set({ tab: 'help' })} />
+      ) : tab === 'help' ? (
+        <LuaHelp />
       ) : tab === 'base' ? (
         <BaseView />
       ) : file ? (

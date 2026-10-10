@@ -1,6 +1,8 @@
-import { ChevronRight, Download, File, FileSpreadsheet, Folder, FolderOpen, HardDrive, Trash2, Upload } from 'lucide-react';
+import { Archive, ArchiveRestore, ChevronRight, ClipboardCopy, Download, File, FileSpreadsheet, Folder, FolderOpen, HardDrive, Trash2, Upload } from 'lucide-react';
 import { useEffect, useState } from 'react';
-import { SYSTEM_DIR } from '@/core/workspace/workspace';
+import { copySettings } from '@/core/settings/settingsExport';
+import { backupWorkspace, lastBackupAt, restoreWorkspace } from '@/core/workspace/backup';
+import { SYSTEM_DIR, type Workspace } from '@/core/workspace/workspace';
 import { useWorkspace, useWorkspaceRevision } from '@/core/workspace/WorkspaceContext';
 import { TABLE_EXTENSIONS } from '@/core/tables/formats';
 import { extName, joinPath, splitPath, type FsEntry } from '@/core/storage/types';
@@ -116,6 +118,77 @@ function FileBrowser() {
   );
 }
 
+/** Копия всех данных в файл и восстановление — главное для «Хранилища браузера». */
+function BackupCard({ ws }: { ws: Workspace }) {
+  const toast = useToast();
+  const rev = useWorkspaceRevision();
+  const [last, setLast] = useState<string | null | undefined>(undefined);
+  const [busy, setBusy] = useState(false);
+  useEffect(() => {
+    void lastBackupAt(ws).then(setLast);
+  }, [ws, rev]);
+  const days = last ? Math.floor((Date.now() - Date.parse(last)) / 86400000) : null;
+  const save = async () => {
+    setBusy(true);
+    try {
+      const { zip, count } = await backupWorkspace(ws);
+      const d = new Date();
+      const pad = (n: number) => String(n).padStart(2, '0');
+      downloadBytes(zip, `DocAssist-копия-${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}.zip`, 'application/zip');
+      toast(`Копия сохранена: файлов ${count}`);
+    } catch (e) {
+      toast(`Не удалось сохранить копию: ${e instanceof Error ? e.message : String(e)}`);
+    } finally {
+      setBusy(false);
+    }
+  };
+  const restore = async () => {
+    const [file] = await pickFiles('.zip,application/zip', false);
+    if (!file) return;
+    if (!confirm(`Восстановить данные из «${file.name}»?\n\nФайлы с такими же именами будут заменены копией, остальные останутся.`)) return;
+    setBusy(true);
+    try {
+      const n = await restoreWorkspace(ws, new Uint8Array(await file.arrayBuffer()));
+      toast(`Восстановлено файлов: ${n}. Перезагрузите страницу, чтобы всё обновилось.`);
+    } catch (e) {
+      toast(`Не удалось восстановить: ${e instanceof Error ? e.message : String(e)}`);
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <div className="card stack">
+      <div className="section-title">
+        <h2 style={{ margin: 0 }}>Копия всех данных в файл</h2>
+      </div>
+      <p className="small muted" style={{ margin: 0 }}>
+        Один .zip со всем, что есть в рабочей папке: таблицы, правки, проверки и настройки, база, переменные, словарь. Из него же
+        можно восстановить данные — в этом или другом браузере, на другом компьютере.
+        {ws.kind === 'browser' && ' Данные «Хранилища браузера» живут только в браузере — сохраняйте копию регулярно.'}
+      </p>
+      <div className="small">
+        {last === undefined ? '…' : last ? `Последняя копия: ${formatDateTime(Date.parse(last))}${days !== null && days > 0 ? ` (${days} дн. назад)` : ''}` : 'Копию ещё не сохраняли.'}
+      </div>
+      {ws.kind === 'browser' && (last === null || (days !== null && days >= 7)) && <Alert kind="warning">Давно нет копии данных — сохраните её в файл.</Alert>}
+      <div className="row">
+        <button className="btn btn--primary" onClick={() => void save()} disabled={busy}>
+          <Archive size={16} /> Сохранить копию в файл
+        </button>
+        <button className="btn" onClick={() => void restore()} disabled={busy}>
+          <ArchiveRestore size={16} /> Восстановить из копии
+        </button>
+        <button
+          className="btn btn--ghost"
+          onClick={() => void copySettings(ws).then((how) => toast(how === 'clipboard' ? 'Настройки скопированы' : 'Настройки скачаны файлом'))}
+          data-tip="Временная кнопка: настройки приложений без переменных, словаря, базы и людей — чтобы отправить разработчику"
+        >
+          <ClipboardCopy size={16} /> Скопировать настройки
+        </button>
+      </div>
+    </div>
+  );
+}
+
 export function WorkspacePage() {
   const { status, fsSupported, openFolder, useBrowserStorage, close } = useWorkspace();
 
@@ -159,6 +232,7 @@ export function WorkspacePage() {
               </button>
             </div>
           </div>
+          <BackupCard ws={status.ws} />
           <section>
             <h2>Файлы</h2>
             <FileBrowser />

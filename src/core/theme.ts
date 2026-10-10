@@ -30,6 +30,9 @@ media?.addEventListener('change', () => {
   if (pref === 'system') apply();
 });
 
+/** Текущая настройка темы. */
+export const getThemePref = (): ThemePref => pref;
+
 export function setThemePref(p: ThemePref) {
   pref = p;
   try {
@@ -44,6 +47,9 @@ function subscribe(fn: () => void) {
   listeners.add(fn);
   return () => listeners.delete(fn);
 }
+
+/** Следить за сменой темы (для сохранения в рабочую папку). */
+export const subscribeTheme = (fn: () => void) => subscribe(fn);
 
 export function useTheme() {
   const current = useSyncExternalStore(subscribe, () => pref);

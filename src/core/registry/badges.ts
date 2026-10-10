@@ -40,6 +40,23 @@ function subscribe(fn: () => void) {
   return () => listeners.delete(fn);
 }
 
+/** Что уже просмотрено — для сохранения в рабочую папку. */
+export const getSeen = () => seenCache;
+export const subscribeSeen = (fn: () => void) => subscribe(fn);
+
+/** Добавить просмотренное из рабочей папки (другой браузер, та же папка). */
+export function mergeSeen(other: Record<string, string>) {
+  const next = { ...other, ...seenCache };
+  if (JSON.stringify(next) === JSON.stringify(seenCache)) return;
+  seenCache = next;
+  try {
+    localStorage.setItem(SEEN_KEY, JSON.stringify(seenCache));
+  } catch {
+    /* не критично */
+  }
+  listeners.forEach((l) => l());
+}
+
 /** Какие бейджи показывать прямо сейчас. */
 export function useVisibleBadges(itemId: string, version: string, badges: BadgeDef[] = []): BadgeDef[] {
   const seen = useSyncExternalStore(subscribe, () => seenCache);

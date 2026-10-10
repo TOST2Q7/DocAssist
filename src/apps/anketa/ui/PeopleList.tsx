@@ -44,7 +44,7 @@ export function PeopleList({ model, reviewed, onOpen }: { model: TableModel; rev
           <Search size={16} className="faint" />
           <input className="input" placeholder="Поиск по ФИО" value={query} onChange={(e) => setQuery(e.target.value)} aria-label="Поиск по ФИО" />
         </div>
-        <div className="segmented" role="group" aria-label="Фильтр">
+        <div className="segmented segmented--wrap" role="group" aria-label="Фильтр">
           {FILTERS.map((f) => (
             <button key={f.id} aria-pressed={filter === f.id} onClick={() => setFilter(f.id)}>
               {f.label}

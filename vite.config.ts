@@ -36,6 +36,9 @@ export default defineConfig(({ mode }) => {
     resolve: {
       alias: {
         '@': fileURLToPath(new URL('./src', import.meta.url)),
+        // Lua (fengari) подключает их только под Node — в браузере заглушка.
+        tmp: fileURLToPath(new URL('./src/core/lua/nodeStub.ts', import.meta.url)),
+        'readline-sync': fileURLToPath(new URL('./src/core/lua/nodeStub.ts', import.meta.url)),
         // В версии-файле нет service worker — подставляем заглушку регистрации.
         ...(single ? { 'virtual:pwa-register/react': fileURLToPath(new URL('./src/ui/pwaStub.ts', import.meta.url)) } : {}),
       },

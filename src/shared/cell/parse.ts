@@ -1,6 +1,6 @@
 import type { Step } from '@/core/base/tree';
 import { ABBREVIATIONS, type Abbr } from './abbr';
-import { matcher } from './blocks';
+import { builtinFits } from './partChecks';
 import type { CellKey, CellTemplate, KeyTag } from './template';
 
 /*
@@ -114,7 +114,8 @@ function longestTag(dict: Dict, tokens: Token[], from: number, dir: 1 | -1, limi
   return null;
 }
 
-const fits = (key: CellKey, value: string) => matcher(key.format).test(value);
+/** Подходит ли значение части под её проверку. Своя функция из библиотеки Lua передаётся снаружи. */
+export type PartFits = (check: string, value: string) => boolean;
 
 const capitalize = (s: string) => s.replace(/^\p{Ll}/u, (c) => c.toUpperCase());
 
@@ -168,7 +169,7 @@ function splitTag(dict: Dict, tokens: Token[]): RawBlock {
 }
 
 /** Деление «через пробел»: приписка до значения забирает слова до следующей приписки, приписка после — одно слово перед собой. */
-function segmentBySpaces(t: CellTemplate, dict: Dict, tokens: Token[]): RawBlock[] {
+function segmentBySpaces(t: CellTemplate, dict: Dict, tokens: Token[], fits: (key: CellKey, v: string) => boolean): RawBlock[] {
   interface Anchor {
     at: number;
     hit: TagHit;
@@ -221,7 +222,8 @@ function segmentBySpaces(t: CellTemplate, dict: Dict, tokens: Token[]): RawBlock
 
 const formatPart = (tag: KeyTag | undefined, value: string) => (!tag ? value : tag.after ? `${value} ${tag.abbr}` : `${tag.abbr} ${value}`);
 
-export function parseCell(value: string, t: CellTemplate): ParsedCell {
+export function parseCell(value: string, t: CellTemplate, partFits: PartFits = builtinFits): ParsedCell {
+  const fits = (key: CellKey, v: string) => partFits(key.check ?? '', v);
   const dict = buildDict(t);
   const issues: CellIssue[] = [];
   const raws: RawBlock[] = [];
@@ -252,7 +254,7 @@ export function parseCell(value: string, t: CellTemplate): ParsedCell {
       issues.push({ text: 'Части пишутся через пробел, без запятых', span: [at, at + 1], fixable: true });
     }
     const tokens = tokenize(value.trim(), lead, dict, issues, true);
-    raws.push(...segmentBySpaces(t, dict, tokens));
+    raws.push(...segmentBySpaces(t, dict, tokens, fits));
   }
 
   // Точка в конце ячейки («д. 18.»), если это не приписка.

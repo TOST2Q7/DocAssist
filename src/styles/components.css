@@ -162,28 +162,21 @@
   border: 2px solid var(--surface);
 }
 
-/* Подсказка при наведении: <button data-tip="Текст"> */
-[data-tip] {
-  position: relative;
-}
-@media (hover: hover) {
-  [data-tip]:hover::after,
-  [data-tip]:focus-visible::after {
-    content: attr(data-tip);
-    position: absolute;
-    top: calc(100% + 6px);
-    left: 50%;
-    transform: translateX(-50%);
-    white-space: nowrap;
-    background: var(--text);
-    color: var(--bg);
-    font-size: 0.8rem;
-    font-weight: 500;
-    padding: 4px 8px;
-    border-radius: var(--radius-s);
-    pointer-events: none;
-    z-index: 100;
-  }
+/* Подсказка при наведении: <button data-tip="Текст"> — показывает ui/Tooltip.tsx (не выходит за край экрана). */
+.tooltip {
+  position: fixed;
+  z-index: 1000;
+  max-width: min(320px, calc(100vw - 16px));
+  background: var(--text);
+  color: var(--bg);
+  font-size: 0.8rem;
+  font-weight: 500;
+  line-height: 1.35;
+  padding: 4px 8px;
+  border-radius: var(--radius-s);
+  pointer-events: none;
+  white-space: normal;
+  overflow-wrap: anywhere;
 }
 
 /* ---------- Бургер-меню ---------- */
@@ -534,11 +527,19 @@ textarea.input {
 
 .segmented {
   display: inline-flex;
+  max-width: 100%;
   border: 1px solid var(--border-strong);
   border-radius: var(--radius-s);
-  overflow: hidden;
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: none;
+}
+.segmented::-webkit-scrollbar {
+  display: none;
 }
 .segmented button {
+  flex: 0 0 auto;
+  white-space: nowrap;
   border: 0;
   background: var(--surface);
   padding: 6px 12px;
@@ -797,16 +798,6 @@ details.faq .faq__answer {
 /* ---------- Поле с переменными ---------- */
 
 
-/* Подсказки у правого края шапки не должны вылезать за экран. */
-@media (hover: hover) {
-  .header [data-tip]:hover::after,
-  .header [data-tip]:focus-visible::after {
-    left: auto;
-    right: 0;
-    transform: none;
-  }
-}
-
 .brand-icon {
   color: var(--brand);
 }
@@ -1059,4 +1050,14 @@ a.chip:hover {
 .field__warn {
   font-size: 0.8rem;
   color: var(--warning);
+}
+/* Переносится на новую строку вместо прокрутки (фильтры). */
+.segmented--wrap {
+  flex-wrap: wrap;
+  overflow: visible;
+}
+.segmented--wrap button {
+  flex: 1 0 auto;
+  border-bottom: 1px solid var(--border-strong);
+  margin-bottom: -1px;
 }

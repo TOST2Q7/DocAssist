@@ -1,5 +1,3 @@
-import { presetBlocks, type Block } from './blocks';
-
 /*
  * Конструктор ячейки: из каких частей (блоков) она состоит, как они пишутся и в каком порядке
  * сохраняются в древо.
@@ -27,8 +25,8 @@ export interface CellKey {
   title: string;
   /** Приписки, с которыми часть пишется в таблице. Пусто — без приписки (индекс). */
   tags: KeyTag[];
-  /** Формат значения (без приписки) — блоки. Пусто — любое. */
-  format: Block[];
+  /** Проверка значения (без приписки): id готовой проверки или имя функции из «Моей библиотеки». Пусто — любое. */
+  check: string;
   required: boolean;
   /**
    * Значение может быть только в одной ветке верхнего уровня древа.
@@ -76,7 +74,6 @@ export function parseOrder(text: string, count: number): OrderResult {
 
 // ---------- Шаблоны по умолчанию ----------
 
-const place = () => presetBlocks('place', true);
 const tag = (abbr: string, title: string, after?: boolean): KeyTag => (after ? { abbr, title, after } : { abbr, title });
 
 const LOCALITY_TAGS = [
@@ -109,19 +106,19 @@ const STREET_TAGS = [
 
 function addressKeys(indexRequired: boolean): CellKey[] {
   return [
-    { id: 'index', title: 'Индекс', tags: [], format: presetBlocks('index', true), required: indexRequired, single: true },
+    { id: 'index', title: 'Индекс', tags: [], check: 'index', required: indexRequired, single: true },
     {
       id: 'region',
       title: 'Регион',
       tags: [tag('Респ.', 'Республика'), tag('край', 'Край', true), tag('обл.', 'Область', true), tag('АО', 'Автономный округ', true)],
-      format: place(),
+      check: 'place',
       required: true,
     },
-    { id: 'district', title: 'Район', tags: [tag('р-н', 'Район'), tag('г.о.', 'Городской округ'), tag('м.р-н', 'Муниципальный район')], format: place(), required: false, single: true },
-    { id: 'locality', title: 'Населённый пункт', tags: LOCALITY_TAGS, format: place(), required: true, single: true },
-    { id: 'street', title: 'Улица', tags: STREET_TAGS, format: place(), required: false },
-    { id: 'house', title: 'Дом', tags: [tag('д.', 'Дом')], format: presetBlocks('house', true), required: true },
-    { id: 'flat', title: 'Квартира', tags: [tag('кв.', 'Квартира')], format: presetBlocks('flat', true), required: false },
+    { id: 'district', title: 'Район', tags: [tag('р-н', 'Район'), tag('г.о.', 'Городской округ'), tag('м.р-н', 'Муниципальный район')], check: 'place', required: false, single: true },
+    { id: 'locality', title: 'Населённый пункт', tags: LOCALITY_TAGS, check: 'place', required: true, single: true },
+    { id: 'street', title: 'Улица', tags: STREET_TAGS, check: 'place', required: false },
+    { id: 'house', title: 'Дом', tags: [tag('д.', 'Дом')], check: 'house', required: true },
+    { id: 'flat', title: 'Квартира', tags: [tag('кв.', 'Квартира')], check: 'flat', required: false },
   ];
 }
 
@@ -139,20 +136,20 @@ export function birthplaceTemplate(): CellTemplate {
     tree: 'Места рождения',
     separator: ' ',
     keys: [
-      { id: 'locality', title: 'Населённый пункт', tags: LOCALITY_TAGS, format: place(), required: true },
-      { id: 'district', title: 'Район', tags: [tag('р-н', 'Район', true)], format: place(), required: false },
+      { id: 'locality', title: 'Населённый пункт', tags: LOCALITY_TAGS, check: 'place', required: true },
+      { id: 'district', title: 'Район', tags: [tag('р-н', 'Район', true)], check: 'place', required: false },
       {
         id: 'region',
         title: 'Регион',
         tags: [tag('Республика', 'Республика'), tag('край', 'Край', true), tag('область', 'Область', true)],
-        format: place(),
+        check: 'place',
         required: false,
       },
       {
         id: 'country',
         title: 'Страна',
         tags: [],
-        format: presetBlocks('country', true),
+        check: 'country',
         required: false,
       },
     ],

@@ -1,146 +1,388 @@
-import { ChevronDown, ChevronRight, RotateCcw } from 'lucide-react';
-import { useMemo, useState } from 'react';
+import { BookOpen, ChevronDown, ChevronRight, ClipboardCopy, Code2, RotateCcw, Wand2 } from 'lucide-react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { FIELD_BY_ID, PERSON_FIELDS } from '@/core/schema/fields';
 import { ABBR_GROUPS, ABBREVIATIONS } from '@/shared/cell/abbr';
-import { checkBlocks, matcher } from '@/shared/cell/blocks';
-import { parseOrder, registrationTemplate } from '@/shared/cell/template';
+import { parseOrder } from '@/shared/cell/template';
 import { Alert } from '@/ui/Alert';
-import { allTreeNames, DEFAULT_EXAMPLES, defaultRules, KIND_LABELS, treeNameOf, type FieldKind, type FieldRule } from '../model/rules';
-import { FormatEditor, FormatTester } from './BlocksEditor';
-import { useRules } from './hooks';
+import { copySettings } from '@/core/settings/settingsExport';
+import { useWorkspace } from '@/core/workspace/WorkspaceContext';
+import { useToast } from '@/ui/Toast';
+import { AnketaChecker, type CheckEnv, type ControlDecl, type Discovery } from '../lua/checker';
+import { API, API_GROUPS, SNIPPETS } from '../lua/docs';
+import { DEFAULT_COMMON, DEFAULT_LIBRARY } from '../lua/defaults';
+import { DEFAULT_EXAMPLES, defaultField, type CommonCheck, type FieldCheck, type ResolvedChecks, type SettingValue } from '../model/checks';
+import type { FieldResult } from '../model/types';
+import { CodeEditor, type CodeEditorHandle } from './CodeEditor';
+import { IssueIcon } from './FieldRow';
+import { useCheckContext, useChecks, useTreeNames } from './hooks';
 import { TemplateEditor } from './TemplateEditor';
 
-const label = (id: string) => FIELD_BY_ID.get(id)?.label ?? id;
+/*
+ * «Шаблоны и правила»: каждую ячейку проверяет короткий код на Lua.
+ * Обычно хватает регулировок (переключатели, числа, списки) — их объявляет сам код через setting.*.
+ * Код открывается отдельно, с подсказками и справкой.
+ */
 
-function Summary({ id, rule, rules }: { id: string; rule: FieldRule; rules: Record<string, FieldRule> }) {
-  const tree = treeNameOf(id, rules);
+const label = (id: string) => FIELD_BY_ID.get(id)?.label ?? id;
+const COLUMNS = PERSON_FIELDS.map((f) => f.label);
+
+/** Первая строка-комментарий кода — краткое описание проверки. */
+const scriptAbout = (script: string) => /^--\s*(.+)$/m.exec(script)?.[1] ?? '';
+
+function useDebounced<T>(value: T, ms: number): T {
+  const [v, setV] = useState(value);
+  useEffect(() => {
+    const t = setTimeout(() => setV(value), ms);
+    return () => clearTimeout(t);
+  }, [value, ms]);
+  return v;
+}
+
+// ---------- Регулировки ----------
+
+function Controls({ controls, settings, onChange, readOnly }: { controls: ControlDecl[]; settings: Record<string, SettingValue>; onChange: (s: Record<string, SettingValue>) => void; readOnly?: boolean }) {
+  const set = (c: ControlDecl, v: SettingValue) => {
+    const next = { ...settings };
+    if (JSON.stringify(v) === JSON.stringify(c.default)) delete next[c.label];
+    else next[c.label] = v;
+    onChange(next);
+  };
+  if (!controls.length) return <p className="small muted" style={{ margin: 0 }}>У этой проверки нет регулировок — всё задано в коде.</p>;
   return (
-    <span className="rule-sum">
-      <span className={`badge badge--kind-${rule.kind}`}>{KIND_LABELS[rule.kind]}</span>
-      {rule.kind === 'tree' && rule.template && (
-        <span className="small muted">
-          {parseOrder(rule.template.order, rule.template.keys.length)
-            .order.map((i) => rule.template!.keys[i]?.title)
-            .join(' → ')}
-        </span>
-      )}
-      {rule.kind !== 'tree' && rule.example && <span className="small muted mono">{rule.example}</span>}
-      {rule.kind === 'list' && tree && <span className="small faint">база «{tree}»</span>}
-      {rule.legacy && <span className="chip chip--warn small">был свой regex — проверьте формат</span>}
-      {rule.within && <span className="chip small">внутри «{label(rule.within)}»</span>}
-      {!rule.required && <span className="chip small">можно пусто</span>}
-      {(rule.confirm || rule.unique) && <span className="chip chip--confirm small">галочка у каждого</span>}
-      {rule.unique && <span className="chip chip--unique small">уникальное{rule.uniqueWith?.length ? ` (с: ${rule.uniqueWith.map(label).join(', ')})` : ''}</span>}
-    </span>
+    <div className="controls">
+      {controls.map((c) => {
+        const id = `ctl-${c.label}`;
+        switch (c.kind) {
+          case 'info':
+            return (
+              <p key={c.label} className="small muted controls__info">
+                {c.label}
+              </p>
+            );
+          case 'toggle':
+            return (
+              <label key={c.label} className="check">
+                <input type="checkbox" checked={c.value === true} disabled={readOnly} onChange={(e) => set(c, e.target.checked)} /> {c.label}
+              </label>
+            );
+          case 'number':
+            return (
+              <label key={c.label} className="controls__row" htmlFor={id}>
+                <span>{c.label}</span>
+                <input id={id} className="input input--sm controls__num" type="number" value={Number(c.value)} disabled={readOnly} onChange={(e) => e.target.value !== '' && set(c, Number(e.target.value))} />
+              </label>
+            );
+          case 'text':
+            return (
+              <label key={c.label} className="controls__row" htmlFor={id}>
+                <span>{c.label}</span>
+                <input id={id} className="input input--sm mono" value={String(c.value)} disabled={readOnly} onChange={(e) => set(c, e.target.value)} />
+              </label>
+            );
+          case 'list':
+            return (
+              <label key={c.label} className="controls__row controls__row--top" htmlFor={id}>
+                <span>
+                  {c.label}
+                  <span className="faint small"> — каждое с новой строки</span>
+                </span>
+                <textarea
+                  id={id}
+                  className="input input--sm"
+                  rows={Math.min(8, Math.max(2, (c.value as string[]).length))}
+                  value={(c.value as string[]).join('\n')}
+                  disabled={readOnly}
+                  onChange={(e) => set(c, e.target.value.split('\n'))}
+                />
+              </label>
+            );
+          case 'choice':
+            return (
+              <label key={c.label} className="controls__row" htmlFor={id}>
+                <span>{c.label}</span>
+                <select id={id} className="select select--sm" value={String(c.value)} disabled={readOnly} onChange={(e) => set(c, e.target.value)}>
+                  {(c.options ?? []).map((o) => (
+                    <option key={o}>{o}</option>
+                  ))}
+                </select>
+              </label>
+            );
+        }
+      })}
+    </div>
   );
 }
 
-function FieldEditor({ id, initial, rules, custom, onSave, onReset, onClose }: { id: string; initial: FieldRule; rules: Record<string, FieldRule>; custom: boolean; onSave: (r: FieldRule) => void; onReset: () => void; onClose: () => void }) {
-  const [r, setR] = useState<FieldRule>(() => structuredClone(initial));
-  const set = (patch: Partial<FieldRule>) => setR((x) => ({ ...x, ...patch }));
-  const problems = r.kind === 'tree' ? (r.template?.keys.flatMap((k) => checkBlocks(k.format).map((p) => `«${k.title}»: ${p}`)) ?? []) : checkBlocks(r.format);
-  const exampleBad = r.kind !== 'tree' && !!r.example && !matcher(r.format).test(r.example);
-  const listFields = PERSON_FIELDS.filter((f) => f.id !== id && rules[f.id]?.kind === 'list');
-  const treeNames = allTreeNames(rules);
-  const orderError = r.kind === 'tree' && r.template ? parseOrder(r.template.order, r.template.keys.length).error : undefined;
+// ---------- Проверить значение ----------
 
-  const setKind = (kind: FieldKind) => {
-    if (kind === 'tree' && !r.template) set({ kind, template: { ...registrationTemplate(), tree: label(id) } });
-    else set({ kind });
-  };
-
+function Preview({ result, printed }: { result: FieldResult; printed: string[] }) {
+  const visible = result.issues;
   return (
-    <div className="rule-editor stack">
-      <div className="field">
-        <span className="field__label">Как проверять</span>
-        <div className="segmented" role="group">
-          {(Object.keys(KIND_LABELS) as FieldKind[]).map((k) => (
-            <button type="button" key={k} aria-pressed={r.kind === k} onClick={() => setKind(k)}>
-              {KIND_LABELS[k]}
+    <div className="preview stack stack--s small">
+      <div className={`preview__status preview__status--${result.status}`}>
+        {result.status === 'ok' ? 'Верно' : result.status === 'error' ? 'Ошибка' : 'Нужна галочка «Проверено»'}
+        {result.confirm?.base && <span className="faint"> · можно добавить в базу «{result.confirm.base.tree}»</span>}
+      </div>
+      {visible.length > 0 && (
+        <ul className="issues">
+          {visible.map((i, k) => (
+            <li key={k} className={`issue issue--${i.level} ${i.resolved ? 'issue--resolved' : ''}`}>
+              <IssueIcon issue={i} />
+              <span className="issue__msg">
+                {i.text}
+                {i.resolved && <span className="faint"> — снято галочкой</span>}
+              </span>
+            </li>
+          ))}
+        </ul>
+      )}
+      {result.fix !== undefined && result.fix !== result.value && (
+        <div>
+          <Wand2 size={13} /> Исправление: <span className="mono">{result.fix === '' ? '(пусто)' : result.fix}</span>
+        </div>
+      )}
+      {result.example && result.status === 'error' && (
+        <div className="muted">
+          Пример: <span className="mono">{result.example}</span>
+        </div>
+      )}
+      {result.parts && (
+        <div className="parts">
+          {result.parts.map((p, i) => (
+            <span key={i} className={`part part--${p.state}`}>
+              <span className="part__level">{p.title}</span>
+              <span className="part__text">{p.text}</span>
+            </span>
+          ))}
+        </div>
+      )}
+      {result.unique && <div className="faint">Уникальность проверяется по всей таблице{result.unique.people ? ' и по базе людей' : ''}.</div>}
+      {result.vars && Object.keys(result.vars).length > 0 && <div className="faint mono">remember: {JSON.stringify(result.vars)}</div>}
+      {printed.length > 0 && (
+        <pre className="preview__print" aria-label="Вывод print">
+          {printed.join('\n')}
+        </pre>
+      )}
+    </div>
+  );
+}
+
+function Tester({ checker, fieldId, example, env }: { checker: AnketaChecker; fieldId: string; example: string; env: CheckEnv }) {
+  const [v, setV] = useState(example);
+  const [confirmed, setConfirmed] = useState(false);
+  const out = useMemo(() => checker.test(fieldId, v, env, {}, confirmed), [checker, fieldId, v, env, confirmed]);
+  return (
+    <div className="stack stack--s">
+      <div className="row row--nowrap">
+        <input className={`input ${out.result.status === 'error' ? 'input--error' : ''}`} value={v} onChange={(e) => setV(e.target.value)} placeholder="Значение…" aria-label="Проверить значение" data-novars />
+        <button type="button" className="btn btn--sm nowrap" onClick={() => setV(example)} disabled={!example}>
+          Пример
+        </button>
+      </div>
+      <label className="check small">
+        <input type="checkbox" checked={confirmed} onChange={(e) => setConfirmed(e.target.checked)} /> галочка «Проверено» стоит
+      </label>
+      <Preview result={out.result} printed={out.printed} />
+      <span className="small faint">Другие ячейки анкеты — из примеров («Примеры значений» выше).</span>
+    </div>
+  );
+}
+
+// ---------- Код ----------
+
+function ApiHelp({ onInsert }: { onInsert: (text: string) => void }) {
+  const [group, setGroup] = useState(API_GROUPS[0].id);
+  const [q, setQ] = useState('');
+  const list = API.filter((e) => (q ? `${e.name} ${e.about}`.toLowerCase().includes(q.toLowerCase()) : e.group === group));
+  return (
+    <div className="api-help">
+      <input className="input input--sm" value={q} onChange={(e) => setQ(e.target.value)} placeholder="Найти: дата, латиница, база…" aria-label="Поиск в справке" data-novars />
+      {!q && (
+        <div className="api-help__tabs" role="tablist">
+          {API_GROUPS.map((g) => (
+            <button key={g.id} type="button" role="tab" aria-selected={g.id === group} className={g.id === group ? 'is-on' : ''} onClick={() => setGroup(g.id)} title={g.about}>
+              {g.title}
             </button>
           ))}
         </div>
-        <span className="field__hint">
-          {r.kind === 'text' && 'Значение должно подходить под формат из блоков. В базе не хранится.'}
-          {r.kind === 'list' && 'Формат из блоков + значение должно быть в базе («ключ:значение»). Новое — предупреждение и «Подтвердить».'}
-          {r.kind === 'tree' && 'Ячейка дробится на части по конструктору, части сверяются с древом — каждая внутри предыдущей.'}
-        </span>
+      )}
+      {!q && <p className="small muted api-help__about">{API_GROUPS.find((g) => g.id === group)?.about}</p>}
+      <div className="api-help__list">
+        {list.map((e) => (
+          <div key={e.name} className="api-help__item">
+            <button type="button" className="api-help__sig mono" onClick={() => onInsert(e.insert)} title="Вставить в код">
+              {e.signature}
+            </button>
+            <div className="small">{e.about}</div>
+            {e.example && <pre className="api-help__ex">{e.example}</pre>}
+          </div>
+        ))}
+        {!list.length && <div className="small muted">Ничего не найдено.</div>}
+      </div>
+    </div>
+  );
+}
+
+function CodeSection({
+  script,
+  onChange,
+  defaultScript,
+  error,
+  functions,
+  trees,
+  readOnly,
+  title,
+}: {
+  script: string;
+  onChange: (s: string) => void;
+  defaultScript: string;
+  error?: { line?: number; message: string };
+  functions: string[];
+  trees: string[];
+  readOnly?: boolean;
+  title: string;
+}) {
+  const editor = useRef<CodeEditorHandle>(null);
+  const [help, setHelp] = useState(true);
+  return (
+    <div className="code-section stack stack--s">
+      <div className="row small">
+        <select
+          className="select select--sm"
+          value=""
+          aria-label="Вставить шаблон кода"
+          disabled={readOnly}
+          onChange={(e) => {
+            const s = SNIPPETS.find((x) => x.title === e.target.value);
+            if (s) editor.current?.insert(s.code);
+          }}
+        >
+          <option value="">+ Вставить шаблон…</option>
+          {SNIPPETS.map((s) => (
+            <option key={s.title}>{s.title}</option>
+          ))}
+        </select>
+        <button type="button" className={`btn btn--sm ${help ? 'btn--on' : ''}`} onClick={() => setHelp(!help)} aria-pressed={help}>
+          <BookOpen size={14} /> Подсказки
+        </button>
+        <span className="spacer" />
+        <button type="button" className="btn btn--sm btn--ghost" disabled={readOnly || script === defaultScript} onClick={() => confirm('Вернуть код по умолчанию? Ваши изменения кода пропадут.') && onChange(defaultScript)}>
+          <RotateCcw size={14} /> Код по умолчанию
+        </button>
+      </div>
+      <div className={`code-wrap ${help ? 'code-wrap--help' : ''}`}>
+        <div className="stack stack--s code-wrap__main">
+          <CodeEditor ref={editor} value={script} onChange={onChange} errorLine={error?.line} columns={COLUMNS} functions={functions} trees={trees} readOnly={readOnly} label={`Код: ${title}`} />
+          {error ? (
+            <span className="field__error">
+              {error.line ? `Строка ${error.line}: ` : ''}
+              {error.message}
+            </span>
+          ) : (
+            <span className="field__hint">Ctrl+Пробел — подсказки: функции, названия столбцов в cell("…"). Код проверяется сразу — ниже видно результат.</span>
+          )}
+        </div>
+        {help && <ApiHelp onInsert={(t) => editor.current?.insert(t)} />}
+      </div>
+    </div>
+  );
+}
+
+// ---------- Проверка столбца ----------
+
+function summaryChips(d: Discovery, settings: Record<string, SettingValue>, f: FieldCheck): string[] {
+  const value = (labelText: string) => {
+    const c = d.controls.find((x) => x.label === labelText);
+    return c ? settings[labelText] ?? c.value : undefined;
+  };
+  const out: string[] = [];
+  if (value('Обязательное — пустое будет ошибкой') === false) out.push('можно пусто');
+  if (d.controls.some((c) => c.label.startsWith('Галочка') && (settings[c.label] ?? c.value) === true)) out.push('галочка у каждого');
+  if (d.controls.some((c) => c.label.startsWith('Уникальное') && (settings[c.label] ?? c.value) === true)) out.push('уникальное');
+  for (const b of d.bases) out.push(`база «${b.tree}»${b.inside ? ` внутри «${b.inside.title}»` : ''}`);
+  if (d.parts && f.template) out.push(`древо «${f.template.tree}»`);
+  return out;
+}
+
+function FieldEditor({
+  id,
+  checks,
+  initial,
+  env,
+  trees,
+  custom,
+  readOnly,
+  onSave,
+  onReset,
+  onClose,
+}: {
+  id: string;
+  checks: ResolvedChecks;
+  initial: FieldCheck;
+  env: CheckEnv;
+  trees: string[];
+  custom: boolean;
+  readOnly: boolean;
+  onSave: (f: FieldCheck) => void;
+  onReset: () => void;
+  onClose: () => void;
+}) {
+  const [f, setF] = useState<FieldCheck>(() => structuredClone(initial));
+  const set = (patch: Partial<FieldCheck>) => setF((x) => ({ ...x, ...patch }));
+  const debounced = useDebounced(f, 350);
+  const checker = useMemo(() => new AnketaChecker({ ...checks, fields: { ...checks.fields, [id]: debounced } }), [checks, id, debounced]);
+  const discovery = useMemo(() => checker.discover(id), [checker, id]);
+  const compileError = checker.compileError(id) ?? discovery.error;
+  const [codeOpen, setCodeOpen] = useState(false);
+  const def = defaultField(id);
+  const orderError = f.template ? parseOrder(f.template.order, f.template.keys.length).error : undefined;
+  // Регулировки показываем по коду, который сейчас в окне (после паузы в наборе).
+  const controls = discovery.controls.map((c) => ({ ...c, value: (f.settings[c.label] ?? c.value) as SettingValue }));
+
+  return (
+    <div className="rule-editor stack">
+      {scriptAbout(f.script) && <p className="small muted" style={{ margin: 0 }}>{scriptAbout(f.script)}</p>}
+      <div className="field">
+        <span className="field__label">Настройки</span>
+        <Controls controls={controls} settings={f.settings} onChange={(settings) => set({ settings })} readOnly={readOnly} />
       </div>
 
-      {r.kind !== 'tree' && (
-        <>
-          {r.legacy && (
-            <Alert kind="warning">
-              В версии 0.3 здесь был свой regex <span className="mono">{r.legacy}</span>. В блоки он не переводится, поэтому сейчас
-              стоит формат по умолчанию. Соберите нужный формат из блоков и сохраните — тогда это предупреждение исчезнет.
-            </Alert>
-          )}
-          <FormatEditor value={r.format} onChange={(format) => set({ format })} onPreset={(p) => set({ example: p.example })} />
-          <div className="grid-2">
-            <label className="field">
-              <span className="field__label">Пример правильного значения</span>
-              <input className={`input ${exampleBad ? 'input--error' : ''}`} value={r.example} onChange={(e) => set({ example: e.target.value })} />
-              {exampleBad ? <span className="field__warn">Пример не подходит под формат</span> : <span className="field__hint">Показывается в подсказке «Пример: …», когда значение с ошибкой.</span>}
-            </label>
-            <div className="field">
-              <span className="field__label">Проверить значение</span>
-              <FormatTester blocks={r.format} />
-            </div>
-          </div>
-        </>
-      )}
-
-      {r.kind === 'list' && (
-        <label className="field">
-          <span className="field__label">Хранить внутри значения другого поля</span>
-          <select className="select" value={r.within ?? ''} onChange={(e) => set({ within: e.target.value || undefined })}>
-            <option value="">— нет, просто список —</option>
-            {listFields.map((f) => (
-              <option key={f.id} value={f.id}>
-                {f.label}
-              </option>
-            ))}
-          </select>
-          <span className="field__hint">Например, «Кем выдан паспорт» внутри «Код подразделения»: для кода 190-000 верно только то, что подтверждено для него.</span>
-        </label>
-      )}
-
-      {r.kind === 'tree' && (
+      <div className="grid-2">
         <label className="field">
           <span className="field__label">Пример правильного значения</span>
-          <input className="input" value={r.example} onChange={(e) => set({ example: e.target.value })} />
+          <input className="input" value={f.example} onChange={(e) => set({ example: e.target.value })} data-novars />
+          <span className="field__hint">Показывается у ошибки: «Пример: …».</span>
         </label>
+        <div className="field">
+          <span className="field__label">Проверить значение</span>
+          <Tester checker={checker} fieldId={id} example={f.example} env={env} />
+        </div>
+      </div>
+
+      {discovery.parts && f.template && (
+        <div className="field">
+          <span className="field__label">Конструктор ячейки (для base.check_parts)</span>
+          <TemplateEditor value={f.template} onChange={(template) => set({ template })} treeNames={trees} example={f.example} functions={checker.libraryFunctions} fits={checker.partFits} />
+        </div>
       )}
 
-      {r.kind === 'tree' && r.template && <TemplateEditor value={r.template} onChange={(template) => set({ template })} treeNames={treeNames} example={r.example} />}
-
       <div className="field">
-        <span className="field__label">Подтверждение</span>
-        <label className="check">
-          <input type="checkbox" checked={r.required} onChange={(e) => set({ required: e.target.checked })} /> Обязательное — пустое значение будет ошибкой
-        </label>
-        <label className="check">
-          <input type="checkbox" checked={r.confirm || r.unique} disabled={r.unique} onChange={(e) => set({ confirm: e.target.checked })} /> Индивидуальное — всегда предупреждение и
-          отдельная галочка у каждого человека
-        </label>
-        <label className="check">
-          <input type="checkbox" checked={r.unique} onChange={(e) => set({ unique: e.target.checked })} /> Уникальное — то же значение у другого человека (в таблице или в базе
-          людей) будет ошибкой
-        </label>
-        {r.unique && r.uniqueWith?.length ? <span className="field__hint">Сравнивается вместе с: {r.uniqueWith.map(label).join(', ')}.</span> : null}
+        <button type="button" className="btn btn--sm code-toggle" onClick={() => setCodeOpen(!codeOpen)} aria-expanded={codeOpen}>
+          {codeOpen ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
+          <Code2 size={16} /> Код проверки (Lua){f.script !== def.script ? ' — изменён' : ''}
+          {compileError && <span className="badge badge--error">ошибка в коде</span>}
+        </button>
+        {!codeOpen && compileError && (
+          <span className="field__error">
+            {compileError.line ? `Строка ${compileError.line}: ` : ''}
+            {compileError.message}
+          </span>
+        )}
+        {codeOpen && <CodeSection script={f.script} onChange={(script) => set({ script })} defaultScript={def.script} error={compileError} functions={checker.libraryFunctions} trees={trees} readOnly={readOnly} title={label(id)} />}
       </div>
 
       <div className="row">
-        <button
-          className="btn btn--primary"
-          onClick={() => {
-            const out = { ...r };
-            delete out.legacy;
-            onSave(out);
-          }}
-          disabled={problems.length > 0 || !!orderError}
-          title={problems.length ? 'Сначала исправьте блоки формата' : undefined}
-        >
+        <button className="btn btn--primary" onClick={() => onSave(f)} disabled={readOnly || !!orderError}>
           Сохранить
         </button>
         <button className="btn" onClick={onClose}>
@@ -148,7 +390,48 @@ function FieldEditor({ id, initial, rules, custom, onSave, onReset, onClose }: {
         </button>
         <span className="spacer" />
         {custom && (
-          <button className="btn btn--ghost" onClick={onReset}>
+          <button className="btn btn--ghost" onClick={onReset} disabled={readOnly}>
+            <RotateCcw size={16} /> Всё по умолчанию
+          </button>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ---------- Общие проверки и библиотека ----------
+
+function CommonEditor({ checks, env, trees, custom, readOnly, onSave }: { checks: ResolvedChecks; env: CheckEnv; trees: string[]; custom: boolean; readOnly: boolean; onSave: (c: CommonCheck | undefined) => void }) {
+  const [c, setC] = useState<CommonCheck>(() => structuredClone(checks.common));
+  const debounced = useDebounced(c, 350);
+  const checker = useMemo(() => new AnketaChecker({ ...checks, common: debounced }), [checks, debounced]);
+  const discovery = useMemo(() => checker.discover('common'), [checker]);
+  const error = checker.compileError('common') ?? discovery.error;
+  const [codeOpen, setCodeOpen] = useState(false);
+  const controls = discovery.controls.map((x) => ({ ...x, value: (c.settings[x.label] ?? x.value) as SettingValue }));
+  const dirty = JSON.stringify(c) !== JSON.stringify(checks.common);
+  return (
+    <div className="rule-editor stack">
+      <p className="small muted" style={{ margin: 0 }}>
+        Выполняются для каждой ячейки перед проверкой столбца: только пробелы, «й» из двух символов, латинские буквы в русских словах.
+      </p>
+      <Controls controls={controls} settings={c.settings} onChange={(settings) => setC({ ...c, settings })} readOnly={readOnly} />
+      <div className="field">
+        <span className="field__label">Проверить значение (как ячейку «Фамилия»)</span>
+        <Tester checker={checker} fieldId="person.lastName" example="Иванов" env={env} />
+      </div>
+      <button type="button" className="btn btn--sm code-toggle" onClick={() => setCodeOpen(!codeOpen)} aria-expanded={codeOpen}>
+        {codeOpen ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
+        <Code2 size={16} /> Код общих проверок (Lua){error && <span className="badge badge--error">ошибка в коде</span>}
+      </button>
+      {codeOpen && <CodeSection script={c.script} onChange={(script) => setC({ ...c, script })} defaultScript={DEFAULT_COMMON} error={error} functions={checker.libraryFunctions} trees={trees} readOnly={readOnly} title="Общие проверки" />}
+      <div className="row">
+        <button className="btn btn--primary" disabled={readOnly || !dirty} onClick={() => onSave(c)}>
+          Сохранить
+        </button>
+        <span className="spacer" />
+        {custom && (
+          <button className="btn btn--ghost" disabled={readOnly} onClick={() => confirm('Вернуть общие проверки по умолчанию?') && onSave(undefined)}>
             <RotateCcw size={16} /> По умолчанию
           </button>
         )}
@@ -157,47 +440,61 @@ function FieldEditor({ id, initial, rules, custom, onSave, onReset, onClose }: {
   );
 }
 
-/** Все примеры в одном месте: что показывать в подсказках «Пример: …». */
-function ExamplesEditor({ rules, readOnly, setField, resetField, defaults }: { rules: Record<string, FieldRule>; readOnly: boolean; setField: (id: string, r: FieldRule) => void; resetField: (id: string) => void; defaults: Record<string, FieldRule> }) {
+function LibraryEditor({ checks, trees, custom, readOnly, onSave }: { checks: ResolvedChecks; trees: string[]; custom: boolean; readOnly: boolean; onSave: (code: string | undefined) => void }) {
+  const [code, setCode] = useState(checks.library);
+  const debounced = useDebounced(code, 350);
+  const checker = useMemo(() => new AnketaChecker({ ...checks, library: debounced }), [checks, debounced]);
+  return (
+    <div className="rule-editor stack">
+      <p className="small muted" style={{ margin: 0 }}>
+        Свои функции на Lua — их видят все проверки. Функция, которая принимает текст и возвращает true/false, появится в
+        конструкторе ячейки как проверка части.
+      </p>
+      <CodeSection script={code} onChange={setCode} defaultScript={DEFAULT_LIBRARY} error={checker.libraryError} functions={checker.libraryFunctions} trees={trees} readOnly={readOnly} title="Моя библиотека" />
+      {checker.libraryFunctions.length > 0 && <div className="small muted">Функции: {checker.libraryFunctions.map((f) => `${f}()`).join(', ')}</div>}
+      <div className="row">
+        <button className="btn btn--primary" disabled={readOnly || code === checks.library || !!checker.libraryError} onClick={() => onSave(code)}>
+          Сохранить
+        </button>
+        <span className="spacer" />
+        {custom && (
+          <button className="btn btn--ghost" disabled={readOnly} onClick={() => confirm('Вернуть библиотеку по умолчанию? Свои функции пропадут.') && onSave(undefined)}>
+            <RotateCcw size={16} /> По умолчанию
+          </button>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ---------- Примеры ----------
+
+function ExamplesEditor({ checks, checker, readOnly, setField, resetField }: { checks: ResolvedChecks; checker: AnketaChecker; readOnly: boolean; setField: (id: string, f: FieldCheck) => void; resetField: (id: string) => void }) {
   const [draft, setDraft] = useState<Record<string, string>>({});
-  const value = (id: string) => draft[id] ?? rules[id].example;
+  const value = (id: string) => draft[id] ?? checks.fields[id].example;
+  const save = (id: string, example: string) => {
+    const next = { ...checks.fields[id], example };
+    if (JSON.stringify(next) === JSON.stringify(defaultField(id))) resetField(id);
+    else setField(id, next);
+  };
   const commit = (id: string) => {
     const v = draft[id];
-    if (v === undefined || v === rules[id].example) return;
-    const next = { ...rules[id], example: v };
-    // Если правило после правки совпадает с умолчанием — храним как «не менялось».
-    if (JSON.stringify(next) === JSON.stringify(defaults[id])) resetField(id);
-    else setField(id, next);
+    if (v === undefined || v === checks.fields[id].example) return;
+    save(id, v);
     setDraft((d) => {
       const n = { ...d };
       delete n[id];
       return n;
     });
   };
-  const changed = PERSON_FIELDS.filter((f) => rules[f.id].example !== DEFAULT_EXAMPLES[f.id]);
-  const resetAll = () => {
-    if (!confirm('Вернуть все примеры по умолчанию?')) return;
-    for (const f of changed) {
-      const next = { ...rules[f.id], example: DEFAULT_EXAMPLES[f.id] };
-      if (JSON.stringify(next) === JSON.stringify(defaults[f.id])) resetField(f.id);
-      else setField(f.id, next);
-    }
-    setDraft({});
-  };
-  const check = (id: string, v: string) => {
-    const r = rules[id];
-    if (!v || r.kind === 'tree') return true;
-    return matcher(r.format).test(v);
-  };
+  const changed = PERSON_FIELDS.filter((f) => checks.fields[f.id].example !== DEFAULT_EXAMPLES[f.id]);
+  const bad = (id: string, v: string) => !!v && checker.test(id, v, { trees: new Map() }).result.issues.some((i) => i.level === 'error' && !i.base);
   return (
     <details className="card card--flat examples">
       <summary>
         Примеры значений{changed.length ? ` · изменено: ${changed.length}` : ''} — показываются в подсказках «Пример: …»
       </summary>
-      <p className="small muted">
-        По умолчанию — нейтральные заготовки, а не чьи-то данные. Перепишите, если нужно: например, свой формат названия отряда.
-        Пример, который не проходит правило столбца, подсвечен.
-      </p>
+      <p className="small muted">По умолчанию — нейтральные заготовки, а не чьи-то данные. Пример, который не проходит проверку столбца, подсвечен.</p>
       <div className="examples__grid">
         {PERSON_FIELDS.map((f, i) => {
           const v = value(f.id);
@@ -207,9 +504,10 @@ function ExamplesEditor({ rules, readOnly, setField, resetField, defaults }: { r
                 <span className="faint">{i + 1}.</span> {f.label}
               </span>
               <input
-                className={`input input--sm ${check(f.id, v) ? '' : 'input--error'}`}
+                className={`input input--sm ${bad(f.id, v) ? 'input--error' : ''}`}
                 value={v}
                 disabled={readOnly}
+                data-novars
                 onChange={(e) => setDraft((d) => ({ ...d, [f.id]: e.target.value }))}
                 onBlur={() => commit(f.id)}
                 onKeyDown={(e) => e.key === 'Enter' && commit(f.id)}
@@ -219,7 +517,16 @@ function ExamplesEditor({ rules, readOnly, setField, resetField, defaults }: { r
         })}
       </div>
       {changed.length > 0 && (
-        <button className="btn btn--sm btn--ghost" onClick={resetAll} disabled={readOnly} style={{ marginTop: 8 }}>
+        <button
+          className="btn btn--sm btn--ghost"
+          disabled={readOnly}
+          style={{ marginTop: 8 }}
+          onClick={() => {
+            if (!confirm('Вернуть все примеры по умолчанию?')) return;
+            for (const f of changed) save(f.id, DEFAULT_EXAMPLES[f.id]);
+            setDraft({});
+          }}
+        >
           <RotateCcw size={14} /> Вернуть примеры по умолчанию
         </button>
       )}
@@ -227,10 +534,17 @@ function ExamplesEditor({ rules, readOnly, setField, resetField, defaults }: { r
   );
 }
 
-export function RulesView() {
-  const { rules, loaded, readOnly, error, setField, resetField, isCustom } = useRules();
+// ---------- Экран ----------
+
+export function RulesView({ onHelp }: { onHelp?: () => void }) {
+  const store = useChecks();
+  const { checks, loaded, readOnly, error, setField, resetField, isCustom } = store;
+  const ctx = useCheckContext();
+  const trees = useTreeNames(ctx.checker);
+  const env = useMemo(() => ({ trees: ctx.trees }), [ctx.trees]);
+  const toast = useToast();
+  const { workspace } = useWorkspace();
   const [open, setOpen] = useState<string | null>(null);
-  const defaults = useMemo(() => defaultRules(), []);
 
   if (!loaded) return <div className="loading">Загрузка правил…</div>;
 
@@ -238,18 +552,61 @@ export function RulesView() {
     <div className="stack">
       {error && <Alert kind="error">{error}</Alert>}
       {readOnly && <Alert kind="warning">Правила сохранены более новой версией DocAssist — сейчас только просмотр.</Alert>}
-      <p className="muted" style={{ margin: 0 }}>
-        У каждого столбца анкеты своё правило: формат из блоков, список значений из базы («ключ:значение») или древо с
-        конструктором. База сначала пустая — значения попадают в неё, когда вы их подтверждаете. Индивидуальное (паспорт, СНИЛС,
-        телефон…) всегда подтверждается галочкой у каждого человека.
-      </p>
+      <div className="row">
+        <p className="muted spacer" style={{ margin: 0 }}>
+          Каждую ячейку проверяет короткий код на Lua. Обычно хватает <strong>настроек</strong> столбца — переключателей и полей; код
+          открывается отдельно, с подсказками. База сначала пустая — значения попадают в неё, когда вы их подтверждаете.
+        </p>
+        {onHelp && (
+          <button className="btn" onClick={onHelp}>
+            <BookOpen size={16} /> Справка по проверкам
+          </button>
+        )}
+        <button
+          className="btn"
+          onClick={() =>
+            workspace &&
+            void copySettings(workspace).then(
+              (how) => toast(how === 'clipboard' ? 'Настройки скопированы — вставьте их в сообщение разработчику' : 'Буфер недоступен — настройки скачаны файлом'),
+              () => toast('Не удалось скопировать настройки'),
+            )
+          }
+          data-tip="Проверки, регулировки, примеры, конструктор — без переменных, словаря, базы и людей"
+        >
+          <ClipboardCopy size={16} /> Скопировать настройки
+        </button>
+      </div>
 
-      <ExamplesEditor rules={rules} readOnly={readOnly} setField={setField} resetField={resetField} defaults={defaults} />
+      <ExamplesEditor checks={checks} checker={ctx.checker} readOnly={readOnly} setField={setField} resetField={resetField} />
 
       <div className="rules-list">
+        <section className={`card rule ${open === 'common' ? 'rule--open' : ''}`}>
+          <button className="rule__head" onClick={() => setOpen(open === 'common' ? null : 'common')} aria-expanded={open === 'common'}>
+            {open === 'common' ? <ChevronDown size={18} /> : <ChevronRight size={18} />}
+            <span className="rule__title">Общие проверки — для всех ячеек</span>
+            {store.stored?.common && <span className="badge badge--updated">изменено</span>}
+          </button>
+          {open === 'common' && (
+            <CommonEditor
+              key={JSON.stringify(checks.common)}
+              checks={checks}
+              env={env}
+              trees={trees}
+              custom={!!store.stored?.common}
+              readOnly={readOnly}
+              onSave={(c) => {
+                store.setCommon(c);
+                setOpen(null);
+              }}
+            />
+          )}
+        </section>
+
         {PERSON_FIELDS.map((f, i) => {
-          const rule = rules[f.id];
+          const field = checks.fields[f.id];
           const isOpen = open === f.id;
+          const d = ctx.checker.usage(f.id);
+          const scriptError = ctx.checker.compileError(f.id) ?? d.error;
           return (
             <section key={f.id} className={`card rule ${isOpen ? 'rule--open' : ''}`}>
               <button className="rule__head" onClick={() => setOpen(isOpen ? null : f.id)} aria-expanded={isOpen}>
@@ -257,23 +614,33 @@ export function RulesView() {
                 <span className="rule__num faint">{i + 1}.</span>
                 <span className="rule__title">{f.label}</span>
                 {isCustom(f.id) && <span className="badge badge--updated">изменено</span>}
-                <Summary id={f.id} rule={rule} rules={rules} />
+                {scriptError && <span className="badge badge--error">ошибка в коде</span>}
+                <span className="rule-sum">
+                  {field.example && <span className="small muted mono">{field.example}</span>}
+                  {summaryChips(d, field.settings, field).map((c) => (
+                    <span key={c} className="chip small">
+                      {c}
+                    </span>
+                  ))}
+                </span>
               </button>
               {isOpen && (
                 <FieldEditor
-                  key={JSON.stringify(rule)}
+                  key={JSON.stringify(field)}
                   id={f.id}
-                  initial={rule}
-                  rules={rules}
+                  checks={checks}
+                  initial={field}
+                  env={env}
+                  trees={trees}
                   custom={isCustom(f.id)}
-                  onSave={(r) => {
-                    if (readOnly) return;
-                    setField(f.id, r);
+                  readOnly={readOnly}
+                  onSave={(next) => {
+                    if (JSON.stringify(next) === JSON.stringify(defaultField(f.id))) resetField(f.id);
+                    else setField(f.id, next);
                     setOpen(null);
                   }}
                   onReset={() => {
-                    if (readOnly) return;
-                    if (confirm(`Вернуть правило «${f.label}» по умолчанию?`)) {
+                    if (confirm(`Вернуть проверку «${f.label}» по умолчанию — код, настройки и пример?`)) {
                       resetField(f.id);
                       setOpen(null);
                     }
@@ -284,6 +651,28 @@ export function RulesView() {
             </section>
           );
         })}
+
+        <section className={`card rule ${open === 'library' ? 'rule--open' : ''}`}>
+          <button className="rule__head" onClick={() => setOpen(open === 'library' ? null : 'library')} aria-expanded={open === 'library'}>
+            {open === 'library' ? <ChevronDown size={18} /> : <ChevronRight size={18} />}
+            <span className="rule__title">Моя библиотека — свои функции на Lua</span>
+            {store.stored?.library !== undefined && <span className="badge badge--updated">изменено</span>}
+            {ctx.checker.libraryError && <span className="badge badge--error">ошибка в коде</span>}
+          </button>
+          {open === 'library' && (
+            <LibraryEditor
+              key={checks.library}
+              checks={checks}
+              trees={trees}
+              custom={store.stored?.library !== undefined}
+              readOnly={readOnly}
+              onSave={(code) => {
+                store.setLibrary(code === DEFAULT_LIBRARY ? undefined : code);
+                setOpen(null);
+              }}
+            />
+          )}
+        </section>
       </div>
 
       <details className="card card--flat">
@@ -310,7 +699,7 @@ export function RulesView() {
         </div>
       </details>
       <p className="small faint" style={{ margin: 0 }}>
-        Правила по умолчанию: {Object.keys(defaults).length} столбцов. Хранятся в рабочей папке: «Проверка анкет/rules.json».
+        Хранится в рабочей папке: «Проверка анкет/checks.json» — только то, что изменено.
       </p>
     </div>
   );

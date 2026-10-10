@@ -2,15 +2,14 @@ import { ArrowDown, ArrowUp, Plus, Trash2, X } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import { uid } from '@/core/util/id';
 import { ABBR_GROUPS, ABBREVIATIONS, FULL_WORDS } from '@/shared/cell/abbr';
-import { PART_PRESETS } from '@/shared/cell/blocks';
-import { parseCell } from '@/shared/cell/parse';
+import { PART_CHECKS } from '@/shared/cell/partChecks';
+import { parseCell, type PartFits } from '@/shared/cell/parse';
 import { parseOrder, type CellKey, type CellTemplate, type KeyTag } from '@/shared/cell/template';
-import { FormatEditor } from './BlocksEditor';
 
 /*
  * Конструктор ячейки-древа — настройка в два пункта:
  *   1. порядок сохранения в древо: «2, 1, 3, *»;
- *   2. части (ключи) по порядку записи в ячейке: описание, приписки как в таблице, формат.
+ *   2. части (ключи) по порядку записи в ячейке: описание, приписки как в таблице, проверка части.
  */
 
 const CATALOG = [...ABBREVIATIONS, ...FULL_WORDS];
@@ -68,7 +67,7 @@ function TagChips({ tags, onChange }: { tags: KeyTag[]; onChange: (tags: KeyTag[
   );
 }
 
-export function TemplateEditor({ value, onChange, treeNames, example }: { value: CellTemplate; onChange: (t: CellTemplate) => void; treeNames: string[]; example?: string }) {
+export function TemplateEditor({ value, onChange, treeNames, example, functions = [], fits }: { value: CellTemplate; onChange: (t: CellTemplate) => void; treeNames: string[]; example?: string; functions?: string[]; fits?: PartFits }) {
   const [sample, setSample] = useState('');
   const t = value;
   const set = (patch: Partial<CellTemplate>) => onChange({ ...t, ...patch });
@@ -83,7 +82,7 @@ export function TemplateEditor({ value, onChange, treeNames, example }: { value:
 
   const order = parseOrder(t.order, t.keys.length);
   const inTree = new Set(order.order);
-  const parsed = useMemo(() => (sample.trim() ? parseCell(sample, t) : null), [sample, t]);
+  const parsed = useMemo(() => (sample.trim() ? parseCell(sample, t, fits) : null), [sample, t, fits]);
 
   return (
     <div className="stack constructor">
@@ -158,7 +157,26 @@ export function TemplateEditor({ value, onChange, treeNames, example }: { value:
                     <span className="small muted key-row__cap">В таблице:</span>
                     <TagChips tags={k.tags} onChange={(tags) => setKey(i, { tags })} />
                   </div>
-                  <FormatEditor compact presets={PART_PRESETS} value={k.format} onChange={(format) => setKey(i, { format })} label={`Формат части ${k.title}`} />
+                  <div className="key-row__line">
+                    <span className="small muted key-row__cap">Проверка:</span>
+                    <select className="select select--sm key-row__check" value={k.check} onChange={(e) => setKey(i, { check: e.target.value })} aria-label={`Проверка части ${k.title}`}>
+                      {PART_CHECKS.map((c) => (
+                        <option key={c.id} value={c.id}>
+                          {c.title}
+                        </option>
+                      ))}
+                      {functions.length > 0 && (
+                        <optgroup label="Моя библиотека (Lua)">
+                          {functions.map((f) => (
+                            <option key={f} value={f}>
+                              {f}(часть) — своя функция
+                            </option>
+                          ))}
+                        </optgroup>
+                      )}
+                      {k.check && !PART_CHECKS.some((c) => c.id === k.check) && !functions.includes(k.check) && <option value={k.check}>{k.check} — нет такой функции в библиотеке</option>}
+                    </select>
+                  </div>
                   <div className="row small">
                     <label className="check">
                       <input type="checkbox" checked={k.required} onChange={(e) => setKey(i, { required: e.target.checked })} /> обязательно
@@ -173,7 +191,7 @@ export function TemplateEditor({ value, onChange, treeNames, example }: { value:
             );
           })}
         </div>
-        <button type="button" className="btn btn--sm" style={{ alignSelf: 'flex-start' }} onClick={() => set({ keys: [...t.keys, { id: uid('k_'), title: 'Новая часть', tags: [], format: [], required: false }] })}>
+        <button type="button" className="btn btn--sm" style={{ alignSelf: 'flex-start' }} onClick={() => set({ keys: [...t.keys, { id: uid('k_'), title: 'Новая часть', tags: [], check: '', required: false }] })}>
           <Plus size={14} /> Добавить часть
         </button>
       </div>

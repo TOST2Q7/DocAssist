@@ -1,4 +1,4 @@
-import { CircleAlert, ShieldCheck, XCircle } from 'lucide-react';
+import { CircleAlert, EyeOff, ShieldCheck, XCircle } from 'lucide-react';
 import { plural } from '@/core/util/format';
 import type { Counts } from '../model/types';
 
@@ -22,6 +22,11 @@ export function Counters({ counts, compact }: { counts: Counts; compact?: boolea
         <span className="cnt cnt--confirm" title="Поля, которые нужно подтвердить">
           <CircleAlert size={13} /> {counts.warn}
           {!compact && ' подтвердить'}
+        </span>
+      )}
+      {counts.ignored > 0 && !compact && (
+        <span className="cnt cnt--ignored" title="Проигнорированные замечания">
+          <EyeOff size={13} /> {counts.ignored} {plural(counts.ignored, ['проигнорировано', 'проигнорировано', 'проигнорировано'])}
         </span>
       )}
     </span>
