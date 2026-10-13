@@ -166,7 +166,7 @@ export function TemplateEditor({ value, onChange, treeNames, example, functions 
                         </option>
                       ))}
                       {functions.length > 0 && (
-                        <optgroup label="Моя библиотека (Lua)">
+                        <optgroup label="Свои функции">
                           {functions.map((f) => (
                             <option key={f} value={f}>
                               {f}(часть) — своя функция

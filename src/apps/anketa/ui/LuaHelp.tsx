@@ -10,6 +10,10 @@ const Code = ({ children }: { children: string }) => <pre className="help-code">
 export function LuaHelp() {
   return (
     <div className="stack help">
+      <p className="muted" style={{ margin: 0 }}>
+        Эта справка — для того, кто настраивает правила и меняет код проверок. Чтобы просто проверять анкеты, она не нужна:
+        хватает настроек столбца в «Шаблонах и правилах» и раздела «Частые вопросы».
+      </p>
       <section className="card stack">
         <h2>Как устроена проверка</h2>
         <p>
