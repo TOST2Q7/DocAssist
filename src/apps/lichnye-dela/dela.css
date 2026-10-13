@@ -1,0 +1,391 @@
+/* «Личные дела». Общие классы (card, list, btn…) — из styles/components.css. */
+.dela__head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-bottom: 20px;
+}
+.dela__head h1 {
+  margin: 0;
+}
+
+/* ---------- Список ---------- */
+.search-box {
+  position: relative;
+  flex: 1 1 240px;
+  display: flex;
+  align-items: center;
+}
+.search-box > svg {
+  position: absolute;
+  left: 10px;
+}
+.search-box .input {
+  padding-left: 32px;
+}
+.dela-squad {
+  width: auto;
+  max-width: 260px;
+}
+.dela-list-head {
+  min-height: 40px;
+  background: var(--surface-2);
+  cursor: pointer;
+}
+.dela-row > input[type='checkbox'],
+.dela-list-head > input[type='checkbox'] {
+  width: 18px;
+  height: 18px;
+  flex: none;
+  accent-color: var(--brand);
+}
+.dela-row:hover {
+  background: var(--surface-2);
+}
+.dela-badge--error {
+  background: var(--error-soft);
+  color: var(--error);
+}
+
+/* ---------- Карточка бойца ---------- */
+.dela-person-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  padding: 10px 12px;
+}
+.dela-person-head .spacer {
+  min-width: 200px;
+}
+
+/* ---------- Форма данных ---------- */
+.dela-group {
+  padding: 0;
+}
+.dela-group__head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  min-height: 48px;
+  padding: 8px 14px;
+  border: 0;
+  background: transparent;
+  text-align: left;
+  cursor: pointer;
+  border-radius: var(--radius);
+}
+.dela-group__head:hover {
+  background: var(--surface-2);
+}
+.dela-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 280px), 1fr));
+  gap: 12px 16px;
+  padding: 4px 14px 16px;
+}
+.dela-field--wide {
+  grid-column: 1 / -1;
+}
+.dela-field .field__label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.dela-changed {
+  height: 16px;
+  font-size: 0.68rem;
+}
+.dela-notes {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.dela-note {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.82rem;
+  flex-wrap: wrap;
+}
+.dela-note > svg {
+  flex: none;
+}
+.dela-note--error {
+  color: var(--error);
+}
+.dela-note--warn {
+  color: var(--warning);
+}
+.dela-note .btn {
+  color: var(--text);
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.dela-savebar {
+  position: sticky;
+  bottom: calc(8px + env(safe-area-inset-bottom));
+  z-index: 20;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  padding: 10px 14px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+}
+.dela-savebar.is-dirty {
+  border-color: var(--brand);
+  box-shadow: var(--shadow-l);
+}
+
+/* ---------- Личная папка ---------- */
+.dela-sections {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 460px), 1fr));
+  gap: var(--gap);
+  align-items: start;
+}
+.dela-sections .section-title {
+  margin-bottom: 0;
+  flex-wrap: wrap;
+  align-items: center;
+}
+.dela-thumbs {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(110px, 1fr));
+  gap: 10px;
+}
+.dela-tile {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-s);
+  overflow: hidden;
+  background: var(--surface-2);
+}
+.dela-tile.is-main {
+  border-color: var(--brand);
+  box-shadow: 0 0 0 1px var(--brand);
+}
+.dela-tile .dela-thumb {
+  width: 100%;
+  height: auto;
+  aspect-ratio: 3 / 4;
+  border: 0;
+  border-radius: 0;
+}
+.dela-tile__bar {
+  display: flex;
+  justify-content: space-between;
+  background: var(--surface);
+  border-top: 1px solid var(--border);
+}
+.dela-thumb {
+  position: relative;
+  flex: none;
+  width: 56px;
+  height: 56px;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-s);
+  background: var(--surface-2);
+  overflow: hidden;
+  cursor: zoom-in;
+}
+.dela-thumb img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.dela-thumb__ext {
+  position: absolute;
+  bottom: 2px;
+  font-size: 0.6rem;
+  font-weight: 700;
+  color: var(--text-muted);
+}
+.dela-preview {
+  display: grid;
+  place-items: center;
+}
+.dela-preview img {
+  max-width: 100%;
+  max-height: 70vh;
+  object-fit: contain;
+}
+.dela-file {
+  align-items: flex-start;
+  padding: 8px 10px;
+}
+.dela-file .list__title {
+  overflow-wrap: anywhere;
+  font-weight: 500;
+}
+.select--sm,
+.input--sm {
+  min-height: 32px;
+  padding: 4px 8px;
+  font-size: 0.86rem;
+}
+.dela-ach-form {
+  display: grid;
+  grid-template-columns: minmax(120px, 0.7fr) minmax(180px, 2fr) minmax(140px, 1fr);
+  gap: 8px;
+}
+@media (max-width: 640px) {
+  .dela-ach-form {
+    grid-template-columns: 1fr;
+  }
+}
+.dela-grow {
+  flex: 1 1 200px;
+  width: auto;
+}
+.dela-characteristic {
+  min-height: 160px;
+  font-family: 'Times New Roman', Times, serif;
+  font-size: 1rem;
+}
+
+/* ---------- Перевод ---------- */
+.dela-checks {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 260px), 1fr));
+  gap: 0 12px;
+}
+.dela-checks .badge {
+  margin-left: 4px;
+}
+.dela-warnings {
+  margin: 4px 0;
+  padding-left: 18px;
+  font-size: 0.9rem;
+}
+.dela-package {
+  max-height: 300px;
+  overflow-y: auto;
+}
+.dela-package .list__item {
+  min-height: 40px;
+  padding: 6px 12px;
+}
+.dela-package .list__title {
+  font-weight: 500;
+  overflow-wrap: anywhere;
+}
+
+/* ---------- Шаблоны документов ---------- */
+.dela-tpl {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 20px;
+  align-items: start;
+}
+@media (max-width: 900px) {
+  .dela-tpl {
+    grid-template-columns: 1fr;
+  }
+}
+.dela-tpl textarea {
+  font-family: var(--font-mono);
+  font-size: 0.86rem;
+}
+.dela-palette summary {
+  cursor: pointer;
+}
+.dela-palette__group {
+  margin-top: 8px;
+}
+.dela-palette__group .row {
+  gap: 4px;
+  margin-top: 2px;
+}
+.dela-chip {
+  cursor: pointer;
+  font-family: var(--font-mono);
+  font-size: 0.78rem;
+  color: var(--text);
+}
+.dela-chip:hover {
+  border-color: var(--brand);
+  color: var(--brand);
+}
+
+/* Лист бумаги: всегда светлый, как напечатанный документ. */
+.dela-paper {
+  background: #fff;
+  color: #111;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-s);
+  box-shadow: var(--shadow);
+  padding: 7% 6% 7% 11%;
+  font-family: 'Times New Roman', Times, serif;
+  font-size: 0.95rem;
+  line-height: 1.35;
+  min-height: 420px;
+  overflow-wrap: anywhere;
+}
+.dela-paper p {
+  margin: 0;
+}
+.dela-paper__tbl {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 2px 0;
+}
+.dela-paper__tbl td {
+  border: 1px solid #333;
+  padding: 2px 4px;
+  vertical-align: top;
+}
+.dela-paper__tbl--plain td {
+  border: 0;
+  padding: 0;
+}
+.dela-paper__img {
+  display: inline-grid;
+  place-items: center;
+  width: 60px;
+  height: 80px;
+  border: 1px dashed #999;
+  color: #777;
+  font-size: 0.75rem;
+}
+.dela-paper__break {
+  border: 0;
+  border-top: 1px dashed #aaa;
+  margin: 12px 0;
+}
+.dela-unknown {
+  background: #fde8e8;
+  color: #c42b2b;
+  border-radius: 3px;
+  padding: 0 2px;
+}
+
+/* ---------- Справка ---------- */
+.dela-help h3 {
+  margin: 0;
+}
+.dela-help p {
+  margin: 0;
+}
+.dela-help__keys {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 12px;
+}
+
+/* Меню «⋯» у файла не должно обрезаться краем списка. */
+.dela-sections .list {
+  overflow: visible;
+}

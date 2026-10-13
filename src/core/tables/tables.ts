@@ -224,8 +224,14 @@ export function readTable(bytes: Uint8Array, fileName: string, sheet?: string): 
   return matrixToTable(sheetToMatrix(wb.Sheets[name]), name, wb.SheetNames);
 }
 
-/** Записать таблицу в XLSX. Все значения — текстовые ячейки. */
-export function writeXlsx(headers: string[], rows: string[][], sheetName = 'Лист1'): Uint8Array {
+/** Лист для записи: заголовки и строки. */
+export interface SheetData {
+  name: string;
+  headers: string[];
+  rows: string[][];
+}
+
+function textSheet(headers: string[], rows: string[][]): XLSX.WorkSheet {
   const aoa = [headers, ...rows];
   const ws = XLSX.utils.aoa_to_sheet(aoa);
   // Принудительно текстовый тип, чтобы Excel не превращал «012345» в 12345, а даты — в числа.
@@ -240,8 +246,24 @@ export function writeXlsx(headers: string[], rows: string[][], sheetName = 'Ли
     const maxLen = Math.max(h.length, ...rows.map((r) => (r[i] ?? '').length));
     return { wch: Math.min(60, Math.max(8, maxLen + 2)) };
   });
+  return ws;
+}
+
+/** Записать таблицу в XLSX. Все значения — текстовые ячейки. */
+export function writeXlsx(headers: string[], rows: string[][], sheetName = 'Лист1'): Uint8Array {
+  return writeXlsxBook([{ name: sheetName, headers, rows }]);
+}
+
+/** Книга XLSX из нескольких листов. Имена листов обрезаются до 31 символа (ограничение Excel). */
+export function writeXlsxBook(sheets: SheetData[]): Uint8Array {
   const wb = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(wb, ws, sheetName.slice(0, 31));
+  const used = new Set<string>();
+  for (const sh of sheets) {
+    let name = sh.name.replace(/[\\/?*[\]:]/g, ' ').slice(0, 31) || 'Лист';
+    for (let i = 2; used.has(name.toLowerCase()); i++) name = `${sh.name.slice(0, 27)} (${i})`;
+    used.add(name.toLowerCase());
+    XLSX.utils.book_append_sheet(wb, textSheet(sh.headers, sh.rows), name);
+  }
   const out = XLSX.write(wb, { type: 'array', bookType: 'xlsx' }) as ArrayBuffer;
   return new Uint8Array(out);
 }

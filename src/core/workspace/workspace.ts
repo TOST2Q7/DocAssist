@@ -95,6 +95,11 @@ export class Workspace {
     this.changes.emit({ path, action: 'write' });
   }
 
+  async mkdir(path: string): Promise<void> {
+    await this.adapter.mkdir(path);
+    this.changes.emit({ path, action: 'write' });
+  }
+
   async remove(path: string): Promise<void> {
     await this.adapter.remove(path);
     this.changes.emit({ path, action: 'remove' });
