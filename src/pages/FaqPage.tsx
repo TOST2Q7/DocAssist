@@ -11,6 +11,7 @@ export function FaqPage() {
   return (
     <div className="page page--narrow">
       <div className="page-head">
+        <div className="kicker">Помощь</div>
         <h1>Частые вопросы</h1>
         <p>Короткие ответы на то, о чём спрашивают чаще всего. Список будет пополняться.</p>
       </div>

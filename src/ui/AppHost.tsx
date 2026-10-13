@@ -15,7 +15,7 @@ export function AppHost() {
     if (app) markSeen(`app:${app.id}`, app.version);
     if (app) document.title = `${app.title} — DocAssist`;
     return () => {
-      document.title = 'DocAssist — документы РСО';
+      document.title = 'DocAssist — рабочее место мастера РСО';
     };
   }, [app]);
 
