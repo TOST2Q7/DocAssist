@@ -6,6 +6,7 @@ import {
   FolderOpen,
   HardDrive,
   ShieldCheck,
+  Sprout,
   Variable,
   WifiOff,
   type LucideIcon,
@@ -110,6 +111,13 @@ const FACTS: { icon: LucideIcon; title: string; text: string }[] = [
   { icon: Variable, title: 'Вводите один раз', text: 'Название отряда, адреса, телефоны — Ctrl+Пробел в любом поле.' },
   { icon: CheckCheck, title: 'База растёт сама', text: 'Подтверждённые значения дальше проходят проверку без вас.' },
 ];
+
+/** Итог под фактами — на всю ширину. */
+const GROWS = {
+  icon: Sprout,
+  title: 'Растёт вместе с вами',
+  text: 'Каждая таблица пополняет базу, подсказки и карточки бойцов — чем больше данных, тем быстрее следующая проверка.',
+};
 
 /** Последние таблицы рабочей папки — чтобы продолжить проверку с того же места. */
 function RecentTables({ checkApp }: { checkApp: AppManifest }) {
@@ -281,6 +289,13 @@ export function HomePage() {
             </div>
           </div>
         ))}
+        <div className="fact fact--wide">
+          <GROWS.icon size={20} className="brand-icon" />
+          <div>
+            <strong>{GROWS.title}</strong>
+            <div className="muted small">{GROWS.text}</div>
+          </div>
+        </div>
       </section>
     </div>
   );

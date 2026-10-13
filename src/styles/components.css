@@ -1374,6 +1374,12 @@ a.step__link:hover {
   flex: none;
   margin-top: 2px;
 }
+/* Итоговая строка под фактами — на всю ширину, отделена линией. */
+.fact--wide {
+  grid-column: 1 / -1;
+  padding-top: 12px;
+  border-top: 1px solid var(--brand-line);
+}
 
 /* ---------- Материалы РСО ---------- */
 .swatches {
