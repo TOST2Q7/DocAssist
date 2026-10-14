@@ -389,3 +389,47 @@
 .dela-sections .list {
   overflow: visible;
 }
+
+/* ---------- Сканы: выбор, переименование, «Для выдачи» ---------- */
+.dela-scan-tools {
+  gap: 6px;
+}
+.dela-file__check {
+  width: 18px;
+  height: 18px;
+  margin-top: 19px;
+  flex: none;
+  accent-color: var(--brand);
+}
+.dela-file.is-selected {
+  background: var(--brand-soft);
+}
+.dela-chips {
+  gap: 4px;
+  margin-top: 4px;
+}
+.dela-names {
+  max-height: 260px;
+  overflow-y: auto;
+}
+.dela-names__row {
+  min-height: 36px;
+  padding: 6px 12px;
+  gap: 8px;
+  font-size: 0.88rem;
+  flex-wrap: wrap;
+}
+.dela-names__from {
+  color: var(--text-muted);
+  overflow-wrap: anywhere;
+}
+.dela-names__to {
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+.dela-break {
+  overflow-wrap: anywhere;
+}
+.dela-handout {
+  overflow: visible;
+}

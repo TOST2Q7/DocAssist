@@ -1,14 +1,13 @@
-import { Award, Camera, Download, ExternalLink, FileText, FolderPlus, ImageIcon, PenLine, Plus, ScanLine, Star, Trash2, Upload, Wand2 } from 'lucide-react';
+import { Award, Camera, Download, ExternalLink, FileText, FolderOutput, FolderPlus, PenLine, Plus, ScanLine, Star, Trash2, Upload, Wand2 } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import { fioText, usePeople, type PersonRecord } from '@/core/people/people';
-import { baseName, extName, joinPath, type FsEntry } from '@/core/storage/types';
+import { baseName, joinPath, type FsEntry } from '@/core/storage/types';
 import { downloadBytes, mimeFor, pickFiles } from '@/core/util/download';
 import { formatBytes } from '@/core/util/format';
 import { useVariables } from '@/core/variables/variables';
 import { useWorkspace } from '@/core/workspace/WorkspaceContext';
 import { Alert } from '@/ui/Alert';
-import { Menu } from '@/ui/Menu';
-import { Modal } from '@/ui/Modal';
+import { Menu, type MenuAction } from '@/ui/Menu';
 import { useToast } from '@/ui/Toast';
 import { ACHIEVEMENT_LEVELS, guessScanKind, REQUIRED_SCANS, SCAN_KINDS, SECTION_BY_ID, type SectionId } from '../constants';
 import { casePath, folderNameFor, type CasesApi, type PersonCase } from '../model/cases';
@@ -16,33 +15,14 @@ import { fillText, makeResolver, personGender, placeholderValues } from '../mode
 import { CHARACTERISTIC_DRAFT, templateDocx, useTemplates } from '../model/templates';
 import { fileName, isImageName } from '../model/transfer';
 import { shortFio } from '../model/names';
-import { openFile, saveFiles, useFolderFiles, useObjectUrl } from './hooks';
+import { Preview, Thumb } from './files';
+import { openFile, saveFiles, useFolderFiles } from './hooks';
+import { ScanActionDialog } from './ScanActionDialog';
 
 interface SectionProps {
   c: PersonCase;
   cases: CasesApi;
   readOnly: boolean;
-}
-
-/** Миниатюра: картинка или значок файла. */
-function Thumb({ path, onClick }: { path: string; onClick?: () => void }) {
-  const isImage = isImageName(path);
-  const url = useObjectUrl(isImage ? path : null);
-  return (
-    <button type="button" className="dela-thumb" onClick={onClick} aria-label={`Открыть ${baseName(path)}`}>
-      {isImage && url ? <img src={url} alt="" loading="lazy" /> : isImage ? <ImageIcon size={24} className="faint" /> : <FileText size={24} className="faint" />}
-      {!isImage && <span className="dela-thumb__ext">{extName(path).toUpperCase()}</span>}
-    </button>
-  );
-}
-
-function Preview({ path, onClose }: { path: string; onClose: () => void }) {
-  const url = useObjectUrl(path);
-  return (
-    <Modal title={baseName(path)} wide onClose={onClose}>
-      <div className="dela-preview">{url ? <img src={url} alt={baseName(path)} /> : <div className="loading">Загрузка…</div>}</div>
-    </Modal>
-  );
 }
 
 /** Кнопки файла: открыть, скачать, удалить. */
@@ -147,10 +127,23 @@ function PhotosSection({ c, cases, readOnly }: SectionProps) {
   );
 }
 
-function FileRow({ c, cases, rel, entry, readOnly, kinds, act }: SectionProps & { rel: string; entry: FsEntry; kinds?: string[]; act: ReturnType<typeof useFileActions> }) {
+interface FileRowProps extends SectionProps {
+  rel: string;
+  entry: FsEntry;
+  kinds?: string[];
+  act: ReturnType<typeof useFileActions>;
+  /** Галочка выбора (для действий с несколькими файлами). */
+  selected?: boolean;
+  onSelect?: (on: boolean) => void;
+  /** Дополнительные пункты меню «⋯». */
+  extra?: MenuAction[];
+}
+
+function FileRow({ c, cases, rel, entry, readOnly, kinds, act, selected, onSelect, extra = [] }: FileRowProps) {
   const note = c.files[rel] ?? {};
   return (
-    <div className="list__item dela-file">
+    <div className={`list__item dela-file ${selected ? 'is-selected' : ''}`}>
+      {onSelect && <input type="checkbox" className="dela-file__check" checked={!!selected} onChange={(e) => onSelect(e.target.checked)} aria-label={`Отметить ${entry.name}`} />}
       <Thumb path={entry.path} onClick={() => act.open(rel)} />
       <div className="list__main stack stack--s">
         <div className="list__title">{entry.name}</div>
@@ -176,6 +169,7 @@ function FileRow({ c, cases, rel, entry, readOnly, kinds, act }: SectionProps & 
         actions={[
           { label: 'Открыть', icon: <ExternalLink size={16} />, onClick: () => act.open(rel) },
           { label: 'Скачать', icon: <Download size={16} />, onClick: () => void act.download(rel) },
+          ...extra,
           { label: 'Удалить', icon: <Trash2 size={16} />, onClick: () => void act.remove(rel), disabled: readOnly },
         ]}
       />
@@ -183,13 +177,26 @@ function FileRow({ c, cases, rel, entry, readOnly, kinds, act }: SectionProps & 
   );
 }
 
-function ScansSection({ c, cases, readOnly }: SectionProps) {
+function ScansSection({ c, cases, readOnly, record }: SectionProps & { record: PersonRecord }) {
   const { workspace } = useWorkspace();
   const toast = useToast();
   const { files, rel } = useSection(c, 'scans');
   const act = useFileActions(c, cases);
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [action, setAction] = useState<{ mode: 'rename' | 'handout'; rels: string[] } | null>(null);
   const have = new Set(files.map((e) => c.files[rel(e)]?.kind).filter(Boolean));
   const missing = REQUIRED_SCANS.filter((k) => !have.has(k));
+  const all = files.map(rel);
+  const chosen = all.filter((r) => selected.has(r));
+  // Ничего не отмечено — действие для всех сканов.
+  const target = chosen.length ? chosen : all;
+  const select = (r: string, on: boolean) =>
+    setSelected((x) => {
+      const n = new Set(x);
+      if (on) n.add(r);
+      else n.delete(r);
+      return n;
+    });
   return (
     <section className="card stack">
       <div className="section-title">
@@ -223,15 +230,49 @@ function ScansSection({ c, cases, readOnly }: SectionProps) {
         </div>
       )}
       {files.length > 0 ? (
-        <div className="list">
-          {files.map((e) => (
-            <FileRow key={e.path} c={c} cases={cases} readOnly={readOnly} rel={rel(e)} entry={e} kinds={SCAN_KINDS} act={act} />
-          ))}
-        </div>
+        <>
+          <div className="row dela-scan-tools">
+            <label className="check small">
+              <input type="checkbox" checked={chosen.length === all.length} onChange={(e) => setSelected(e.target.checked ? new Set(all) : new Set())} aria-label="Отметить все сканы" />
+              {chosen.length ? `Отмечено ${chosen.length}` : 'Все'}
+            </label>
+            <span className="spacer" />
+            <button className="btn btn--sm" disabled={readOnly} onClick={() => setAction({ mode: 'rename', rels: target })} data-tip="Имя файла по шаблону с данными человека">
+              <PenLine size={14} /> Переименовать{chosen.length ? '' : ' все'}
+            </button>
+            <button className="btn btn--sm" disabled={readOnly} onClick={() => setAction({ mode: 'handout', rels: target })} data-tip="Во временную папку для отдачи и загрузки">
+              <FolderOutput size={14} /> В «Для выдачи»
+            </button>
+          </div>
+          <div className="list">
+            {files.map((e) => {
+              const r = rel(e);
+              return (
+                <FileRow
+                  key={e.path}
+                  c={c}
+                  cases={cases}
+                  readOnly={readOnly}
+                  rel={r}
+                  entry={e}
+                  kinds={SCAN_KINDS}
+                  act={act}
+                  selected={selected.has(r)}
+                  onSelect={(on) => select(r, on)}
+                  extra={[
+                    { label: 'Переименовать по шаблону', icon: <PenLine size={16} />, onClick: () => setAction({ mode: 'rename', rels: [r] }), disabled: readOnly },
+                    { label: 'В «Для выдачи»', icon: <FolderOutput size={16} />, onClick: () => setAction({ mode: 'handout', rels: [r] }), disabled: readOnly },
+                  ]}
+                />
+              );
+            })}
+          </div>
+        </>
       ) : (
         <div className="small muted">Картинки (JPEG, PNG) или PDF. На телефоне можно сразу сфотографировать документ.</div>
       )}
       {act.preview && <Preview path={act.preview} onClose={() => act.setPreview(null)} />}
+      {action && <ScanActionDialog mode={action.mode} rels={action.rels} record={record} c={c} cases={cases} onClose={() => setAction(null)} onDone={() => setSelected(new Set())} />}
     </section>
   );
 }
@@ -481,7 +522,7 @@ export function FolderView({ record, cases }: { record: PersonRecord; cases: Cas
       {readOnly && <Alert kind="warning">Сведения личных дел открыты только для чтения (файл создан более новой версией DocAssist или повреждён).</Alert>}
       <div className="dela-sections">
         <PhotosSection c={c} cases={cases} readOnly={readOnly} />
-        <ScansSection c={c} cases={cases} readOnly={readOnly} />
+        <ScansSection c={c} cases={cases} readOnly={readOnly} record={record} />
         <AchievementsSection c={c} cases={cases} readOnly={readOnly} />
         <CharacteristicSection c={c} cases={cases} readOnly={readOnly} record={record} />
       </div>

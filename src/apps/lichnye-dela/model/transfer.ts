@@ -108,7 +108,7 @@ export function dateStamp(date: string, now = new Date()): string {
   return `${d.year}-${p(d.month)}-${p(d.day)}`;
 }
 
-/** Имя файла: «Заявление о переводе — Иванов И. И.docx» (без точки перед расширением). */
+/** Имя файла: «Заявление о переводе — Фамилия И. О.docx» (без точки перед расширением). */
 export function fileName(title: string, who: string, ext: string): string {
   return `${safeName(who ? `${title} — ${who}` : title, 120)}.${ext}`;
 }

@@ -1,6 +1,6 @@
 /*
- * ФИО для документов: склонение («от кого» — Иванова Ивана Ивановича, «кому» — Петрову Петру Петровичу),
- * краткие формы («Иванов И. И.», «И. И. Иванов») и пол по отчеству или имени.
+ * ФИО для документов: склонение («от кого» — Примерова Примера Примеровича, «кому» — Командирову Командиру Командировичу),
+ * краткие формы («Примеров П. П.», «П. П. Примеров») и пол по отчеству или имени.
  * Склонение — по обычным правилам русских имён; то, что правила не знают, остаётся как есть.
  */
 
@@ -141,14 +141,14 @@ export function declineFio(text: string, c: NameCase, gender?: Gender | null): s
 
 const initial = (w?: string) => (w ? `${w.charAt(0).toUpperCase()}.` : '');
 
-/** «Иванов И. И.» */
+/** «Примеров П. П.» */
 export function shortFio(text: string): string {
   const p = parse(text);
   if (p.last < 0 || p.first < 0) return text.trim();
   return [p.words[p.last], [initial(p.words[p.first]), initial(p.words[p.middle])].filter(Boolean).join(' ')].join(' ');
 }
 
-/** «И. И. Иванов» — для подписи. */
+/** «П. П. Примеров» — для подписи. */
 export function signFio(text: string): string {
   const p = parse(text);
   if (p.last < 0) return text.trim();

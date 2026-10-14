@@ -1,8 +1,11 @@
 import { useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
+import { HANDOUT_FOLDER } from '@/core/handout/handout';
 import { Alert } from '@/ui/Alert';
 import { useCases } from './model/cases';
+import { HandoutView } from './ui/HandoutView';
 import { HelpView } from './ui/HelpView';
+import { useFolderFiles } from './ui/hooks';
 import { NewPersonDialog } from './ui/NewPersonDialog';
 import { PeopleView } from './ui/PeopleView';
 import { PersonPage, type PersonTab } from './ui/PersonPage';
@@ -21,7 +24,8 @@ export default function LichnyeDelaApp() {
   const [transfer, setTransfer] = useState<string[] | null>(null);
 
   const viewParam = params.get('view');
-  const view = viewParam === 'templates' || viewParam === 'help' ? viewParam : 'people';
+  const view = viewParam === 'templates' || viewParam === 'help' || viewParam === 'handout' ? viewParam : 'people';
+  const handout = useFolderFiles(HANDOUT_FOLDER)?.length ?? 0;
   const personId = params.get('p');
   const tabParam = params.get('tab');
   const tab: PersonTab = tabParam === 'folder' || tabParam === 'transfer' ? tabParam : 'data';
@@ -43,6 +47,10 @@ export default function LichnyeDelaApp() {
           <button role="tab" aria-selected={view === 'people'} aria-pressed={view === 'people'} onClick={() => set({ view: null })}>
             Бойцы
           </button>
+          <button role="tab" aria-selected={view === 'handout'} aria-pressed={view === 'handout'} onClick={() => set({ view: 'handout', p: null, tab: null })}>
+            {HANDOUT_FOLDER}
+            {handout ? ` (${handout})` : ''}
+          </button>
           <button role="tab" aria-selected={view === 'templates'} aria-pressed={view === 'templates'} onClick={() => set({ view: 'templates', p: null, tab: null })}>
             Шаблоны документов
           </button>
@@ -54,6 +62,8 @@ export default function LichnyeDelaApp() {
       {cases.error && <Alert kind="error">{cases.error}</Alert>}
       {view === 'templates' ? (
         <TemplatesView />
+      ) : view === 'handout' ? (
+        <HandoutView cases={cases} />
       ) : view === 'help' ? (
         <HelpView />
       ) : personId ? (

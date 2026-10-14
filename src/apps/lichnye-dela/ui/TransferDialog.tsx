@@ -318,7 +318,7 @@ export function TransferDialog({ personIds, cases, onClose }: Props) {
               <input type="checkbox" checked={opts.compress} onChange={(e) => opt('compress', e.target.checked)} /> Сжать картинки (JPEG, до 2000 px)
             </label>
           </div>
-          <span className="small muted">Файлы получат понятные имена: «01 Паспорт (разворот с фото) — Иванов И. И.jpg». Исходные файлы в личной папке не меняются.</span>
+          <span className="small muted">Файлы получат понятные имена: «01 Паспорт (разворот с фото) — Фамилия И. О.jpg». Исходные файлы в личной папке не меняются.</span>
         </fieldset>
 
         {checks.length > 0 && (

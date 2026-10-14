@@ -14,6 +14,8 @@ import { useCases } from '../model/cases';
 import { makeResolver, personGender, placeholderValues, PLACEHOLDER_GROUPS, type TransferValues } from '../model/placeholders';
 import { emptyTemplate, isModified, templateBlocks, templateDocx, useTemplates, type TextTemplate } from '../model/templates';
 import { DocPreview } from './DocPreview';
+import { NamesPreview, ScanNameField } from './ScanActionDialog';
+import { DEFAULT_SCAN_NAME, planNames } from '../model/scanNames';
 import { saveFiles, useFolderFiles } from './hooks';
 
 /** Пример для предпросмотра — нейтральные данные, а не чьи-то настоящие. */
@@ -270,6 +272,63 @@ function WordTemplates({ person, personCase }: { person: PersonRecord; personCas
   );
 }
 
+/** Шаблон имени файлов сканов: «Переименовать по шаблону» и «В „Для выдачи“» в личной папке. */
+function ScanNameCard({ person, personCase }: { person: PersonRecord; personCase?: Pick<PersonCase, 'characteristic' | 'achievements'> }) {
+  const templates = useTemplates();
+  const vars = useVariables();
+  // Своё состояние поля: сохранённый шаблон без пробелов по краям, а набирать их нужно.
+  const [value, setValue] = useState(templates.scanName);
+  const [edited, setEdited] = useState(false);
+  useEffect(() => {
+    if (!edited) setValue(templates.scanName);
+  }, [templates.scanName, edited]);
+  const ctx = { values: placeholderValues(person, personCase), gender: personGender(person.fields), vars: vars.items };
+  const plan = planNames(
+    value,
+    [
+      { rel: 'Сканы/IMG_0001.jpg', doc: 'Паспорт (разворот с фото)' },
+      { rel: 'Сканы/скан.pdf', doc: 'СНИЛС' },
+    ],
+    [],
+    ctx,
+  );
+  return (
+    <section className="card stack">
+      <div className="section-title">
+        <h3 className="spacer" style={{ margin: 0 }}>
+          Имена файлов сканов
+        </h3>
+        {templates.scanName !== DEFAULT_SCAN_NAME && (
+          <button
+            className="btn btn--sm"
+            onClick={() => {
+              templates.setScanName(DEFAULT_SCAN_NAME);
+              setValue(DEFAULT_SCAN_NAME);
+            }}
+            disabled={templates.readOnly}
+          >
+            <RotateCcw size={14} /> Как было
+          </button>
+        )}
+      </div>
+      <p className="small muted" style={{ margin: 0 }}>
+        По этому шаблону сканы переименовываются в личной папке («Переименовать по шаблону») и при отправке в «Для выдачи». В окне переименования шаблон
+        можно поменять на месте.
+      </p>
+      <ScanNameField
+        value={value}
+        onChange={(v) => {
+          setEdited(true);
+          setValue(v);
+          templates.setScanName(v);
+        }}
+      />
+      <div className="small muted">Как получится:</div>
+      <NamesPreview plan={plan} />
+    </section>
+  );
+}
+
 export function TemplatesView() {
   const templates = useTemplates();
   const people = usePeople();
@@ -321,6 +380,7 @@ export function TemplatesView() {
           <Editor key={t.id} t={t} person={person} personCase={personCase} onSave={(x) => templates.save(x)} onReset={() => templates.reset(t.id)} />
         </section>
       )}
+      <ScanNameCard person={person} personCase={personCase} />
       <WordTemplates person={person} personCase={personCase} />
       <p className="small muted">
         Изменения сохраняются сами — в «Личные дела/templates.json» (только то, что изменено). Личная карточка, таблица и опись собираются

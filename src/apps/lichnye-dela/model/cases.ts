@@ -15,7 +15,7 @@ import { APP_FOLDER, CASES_FILE, SECTIONS, TRANSFERS_FOLDER, WORD_TEMPLATES_FOLD
  *
  *   Личные дела/
  *     cases.json                      ← этот файл: достижения, характеристика, подписи файлов, переводы
- *     Иванов Иван Иванович/           ← личная папка
+ *     Фамилия Имя Отчество/           ← личная папка
  *       Фотографии/  Сканы/  Достижения/  Характеристика/
  *       Перевод 2026-09-01/           ← пакет перевода (документы, таблица, фото и сканы)
  */
@@ -124,7 +124,7 @@ export function folderNameFor(fields: Record<string, string>): string {
   return RESERVED.has(name.toLowerCase()) ? `${name} (боец)` : name;
 }
 
-/** Свободное имя: «Иванов Иван», «Иванов Иван (2)»… */
+/** Свободное имя: «Фамилия Имя», «Фамилия Имя (2)»… */
 export function uniqueName(base: string, taken: Set<string>): string {
   const lower = new Set([...taken].map((t) => t.toLowerCase()));
   if (!lower.has(base.toLowerCase())) return base;
@@ -140,6 +140,17 @@ export const casePath = (c: Pick<PersonCase, 'folder'>, rel: string) => joinPath
 export function newCase(personId: string, folder: string, fio: string): PersonCase {
   const now = new Date().toISOString();
   return { personId, folder, fio, characteristic: '', achievements: [], files: {}, transfers: [], createdAt: now, updatedAt: now };
+}
+
+/** Дело после переименования файла: подпись, основное фото и ссылки достижений переходят на новое имя. */
+export function renamedFile(c: PersonCase, from: string, to: string): PersonCase {
+  if (from === to) return c;
+  const files = { ...c.files };
+  if (files[from]) {
+    files[to] = files[from];
+    delete files[from];
+  }
+  return { ...c, files, photo: c.photo === from ? to : c.photo, achievements: c.achievements.map((a) => (a.file === from ? { ...a, file: to } : a)) };
 }
 
 /** Создать подпапки разделов. */
@@ -215,6 +226,10 @@ export function useCases() {
           else delete files[rel];
           return { ...c, files };
         });
+      },
+      /** Файл переименован: подпись, основное фото и ссылки достижений — за ним. */
+      renameFile(personId: string, from: string, to: string) {
+        update(personId, (c) => renamedFile(c, from, to));
       },
       /** Файл удалён: убрать подпись, основное фото и ссылки достижений. */
       forgetFile(personId: string, rel: string) {

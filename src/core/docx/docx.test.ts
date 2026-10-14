@@ -50,7 +50,7 @@ describe('документ Word из блоков', () => {
       { type: 'p', text: 'Командиру отряда\nот бойца', indentLeft: 90 },
       { type: 'p', text: 'Заявление', align: 'center', bold: true },
       { type: 'p', text: 'Прошу перевести меня & <других>', firstLine: 12.5, align: 'both' },
-      { type: 'table', rows: [['Фамилия', 'Иванов'], [{ text: 'Фото', span: 2 }]], widths: [1, 2] },
+      { type: 'table', rows: [['Фамилия', 'Примеров'], [{ text: 'Фото', span: 2 }]], widths: [1, 2] },
       { type: 'image', image: { data: png(300, 400), widthMm: 30 } },
       { type: 'p', text: '01.01.2026\t__________', rightTab: true },
     ]);
@@ -75,14 +75,14 @@ describe('документ Word из блоков', () => {
 });
 
 describe('заполнение шаблона Word', () => {
-  const values: Record<string, string> = { ФИО: 'Иванов Иван Иванович', 'Дата перевода': '01.09.2026', Адрес: 'строка 1\nстрока 2', 'A&B': '<&>' };
+  const values: Record<string, string> = { ФИО: 'Примеров Пример Примерович', 'Дата перевода': '01.09.2026', Адрес: 'строка 1\nстрока 2', 'A&B': '<&>' };
   const resolve = (k: string) => values[k];
 
   it('метка целиком в одном куске', () => {
     const used = new Set<string>();
     const missing = new Set<string>();
     const xml = fillXml('<w:p><w:r><w:t>Я, {ФИО}, прошу</w:t></w:r></w:p>', resolve, used, missing);
-    expect(xml).toBe('<w:p><w:r><w:t xml:space="preserve">Я, Иванов Иван Иванович, прошу</w:t></w:r></w:p>');
+    expect(xml).toBe('<w:p><w:r><w:t xml:space="preserve">Я, Примеров Пример Примерович, прошу</w:t></w:r></w:p>');
     expect([...used]).toEqual(['ФИО']);
   });
 
@@ -118,8 +118,8 @@ describe('заполнение шаблона Word', () => {
     const r = await fillDocx(src, resolve);
     expect(r.used).toEqual(['ФИО']);
     expect(r.missing).toEqual(['Должность']);
-    expect(await part(r.data, 'word/document.xml')).toContain('Иванов Иван Иванович');
-    expect(await part(r.data, 'word/footer1.xml')).toContain('Иванов Иван Иванович');
+    expect(await part(r.data, 'word/document.xml')).toContain('Примеров Пример Примерович');
+    expect(await part(r.data, 'word/footer1.xml')).toContain('Примеров Пример Примерович');
     expect(await part(r.data, '[Content_Types].xml')).toBe('<Types/>');
   });
 

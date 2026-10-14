@@ -7,6 +7,7 @@ import type { Workspace } from '@/core/workspace/workspace';
 import { uid } from '@/core/util/id';
 import { TEMPLATES_FILE } from '../constants';
 import { fillText } from './placeholders';
+import { DEFAULT_SCAN_NAME } from './scanNames';
 
 /*
  * Тексты документов — как в обычном заявлении: «шапка» справа (кому и от кого), заголовок по центру,
@@ -85,6 +86,8 @@ export const CHARACTERISTIC_DRAFT =
 export interface TemplatesDoc {
   /** Изменённые встроенные (по id) и свои шаблоны. */
   templates: Record<string, Partial<TextTemplate>>;
+  /** Шаблон имени файла скана (если изменён). */
+  scanName?: string;
 }
 
 export const templatesDocType = defineDocType<TemplatesDoc>({
@@ -173,7 +176,7 @@ export function useTemplates() {
           const templates = { ...x.templates };
           if (d && !Object.keys(patch).length) delete templates[t.id];
           else templates[t.id] = patch;
-          return { templates };
+          return { ...x, templates };
         });
       },
       /** Встроенный — вернуть как было, свой — удалить. */
@@ -181,8 +184,14 @@ export function useTemplates() {
         store?.update((x) => {
           const templates = { ...x.templates };
           delete templates[id];
-          return { templates };
+          return { ...x, templates };
         });
+      },
+      /** Шаблон имени файла скана. */
+      scanName: doc?.scanName?.trim() || DEFAULT_SCAN_NAME,
+      setScanName(v: string) {
+        const next = v.trim();
+        store?.update((x) => ({ ...x, scanName: next && next !== DEFAULT_SCAN_NAME ? next : undefined }));
       },
     };
   }, [doc, state?.loaded, state?.tooNew, state?.broken, store]);
