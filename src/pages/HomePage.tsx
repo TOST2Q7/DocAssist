@@ -7,6 +7,7 @@ import {
   HardDrive,
   ShieldCheck,
   Sprout,
+  Upload,
   Variable,
   WifiOff,
   type LucideIcon,
@@ -205,6 +206,9 @@ export function HomePage() {
               {ready ? `Папка: ${status.ws.label}` : 'Выбрать рабочую папку'}
             </Link>
           </div>
+          <p className="hero-panel__hint">
+            <Upload size={16} /> Сканы, фото и таблицы можно просто перетащить в окно — DocAssist спросит, что это за файл и на чьё имя его закрепить.
+          </p>
         </div>
         <HeroArt />
       </section>

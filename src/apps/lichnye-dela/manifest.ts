@@ -18,6 +18,8 @@ const manifest: AppManifest = {
   badges: [{ kind: 'new' }],
   order: 15,
   component: lazy(() => import('./LichnyeDelaApp')),
+  // Файл, перетащенный в любое место сайта: что это и на чьё имя — и в личную папку.
+  fileDrop: lazy(() => import('./ui/IncomingDialog')),
 };
 
 export default manifest;

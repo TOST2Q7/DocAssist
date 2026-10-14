@@ -5,6 +5,7 @@ import { useRegisterSW } from 'virtual:pwa-register/react';
 import { APP_VERSION, IS_SINGLE_FILE } from '@/core/config';
 import { usePrefsSync } from '@/core/settings/prefs';
 import { useUpdateCheck } from '@/core/update/checkUpdate';
+import { FileDrop } from './FileDrop';
 import { Header } from './Header';
 import { Tooltip } from './Tooltip';
 import { VarSuggest } from './VarSuggest';
@@ -65,6 +66,7 @@ export function Layout() {
       </main>
       <VarSuggest />
       <Tooltip />
+      <FileDrop />
       <footer className="footer">
         <div className="footer__inner">
           <span>DocAssist v{APP_VERSION} · работает локально, данные не покидают устройство</span>

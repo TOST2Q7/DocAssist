@@ -457,6 +457,29 @@ function CharacteristicSection({ c, cases, readOnly, record }: SectionProps & { 
   );
 }
 
+/** Файлы в самой личной папке, вне разделов, — например, перетащенные в окно сайта как «Другое». */
+function OtherFilesSection({ c, cases, readOnly }: SectionProps) {
+  const files = useFolderFiles(c.folder) ?? [];
+  const act = useFileActions(c, cases);
+  if (!files.length) return null;
+  return (
+    <section className="card stack">
+      <div className="section-title">
+        <FileText size={18} className="brand-icon" />
+        <h3 className="spacer" style={{ margin: 0 }}>
+          Другие файлы
+        </h3>
+      </div>
+      <div className="list">
+        {files.map((e) => (
+          <FileRow key={e.path} c={c} cases={cases} readOnly={readOnly} rel={e.name} entry={e} act={act} />
+        ))}
+      </div>
+      {act.preview && <Preview path={act.preview} onClose={() => act.setPreview(null)} />}
+    </section>
+  );
+}
+
 export function FolderView({ record, cases }: { record: PersonRecord; cases: CasesApi }) {
   const toast = useToast();
   const people = usePeople();
@@ -525,6 +548,7 @@ export function FolderView({ record, cases }: { record: PersonRecord; cases: Cas
         <ScansSection c={c} cases={cases} readOnly={readOnly} record={record} />
         <AchievementsSection c={c} cases={cases} readOnly={readOnly} />
         <CharacteristicSection c={c} cases={cases} readOnly={readOnly} record={record} />
+        <OtherFilesSection c={c} cases={cases} readOnly={readOnly} />
       </div>
     </div>
   );

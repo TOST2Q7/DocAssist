@@ -11,19 +11,6 @@
 }
 
 /* ---------- Список ---------- */
-.search-box {
-  position: relative;
-  flex: 1 1 240px;
-  display: flex;
-  align-items: center;
-}
-.search-box > svg {
-  position: absolute;
-  left: 10px;
-}
-.search-box .input {
-  padding-left: 32px;
-}
 .dela-squad {
   width: auto;
   max-width: 260px;

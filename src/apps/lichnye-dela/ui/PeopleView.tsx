@@ -1,8 +1,10 @@
-import { ArrowRightLeft, FolderOpen, RotateCcw, Search, Trash2, UserPlus } from 'lucide-react';
+import { ArrowRightLeft, FolderOpen, RotateCcw, Search, Trash2, Upload, UserPlus } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import { fioText, usePeople } from '@/core/people/people';
+import { pickFiles } from '@/core/util/download';
 import { plural } from '@/core/util/format';
 import { Alert } from '@/ui/Alert';
+import { openIncomingFiles } from '@/ui/FileDrop';
 import { useToast } from '@/ui/Toast';
 import { APP_ID } from '../constants';
 import type { CasesApi } from '../model/cases';
@@ -64,6 +66,13 @@ export function PeopleView({ cases, onOpen, onNew, onTransfer }: Props) {
         )}
         <button className="btn" onClick={() => onTransfer(chosen)} disabled={!chosen.length} data-tip="Отметьте бойцов галочками — пакет перевода для всех сразу">
           <ArrowRightLeft size={16} /> Перевод{chosen.length ? ` (${chosen.length})` : ''}
+        </button>
+        <button
+          className="btn"
+          onClick={async () => openIncomingFiles(await pickFiles('', true))}
+          data-tip="Сканы, фото, грамоты — спросим, что это и на чьё имя. На компьютере файлы можно просто перетащить в окно."
+        >
+          <Upload size={16} /> Добавить файлы
         </button>
         <button className="btn btn--primary" onClick={onNew} disabled={people.readOnly}>
           <UserPlus size={16} /> Добавить бойца
