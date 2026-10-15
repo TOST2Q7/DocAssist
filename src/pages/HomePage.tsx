@@ -1,4 +1,4 @@
-import { ArrowRight, FolderOpen, HardDrive, Layers, ShieldCheck, Variable, WifiOff } from 'lucide-react';
+import { ArrowRight, BookOpen, FolderOpen, HardDrive, Layers, ShieldCheck, Variable, WifiOff } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { APPS, appPath } from '@/core/registry/apps';
 import type { AppManifest } from '@/core/registry/types';
@@ -78,6 +78,28 @@ export function HomePage() {
             <AppCard key={app.id} app={app} />
           ))}
         </div>
+      </section>
+
+      <section className="section">
+        <div className="section-title">
+          <h2>Справка</h2>
+        </div>
+        <Link to="/help" className="card app-card">
+          <div className="app-card__top">
+            <div className="app-card__icon">
+              <BookOpen size={22} />
+            </div>
+            <Badges itemId="menu:help" badges={[{ kind: 'new' }]} />
+          </div>
+          <h3>Работа с документами ЛСО</h3>
+          <p>
+            Методическое пособие ХРО МООО «РСО»: как оформить кандидата, пакет документов с образцами заполнения и сканов, названия файлов,
+            учетная карточка, журнал учета, учебные заведения с кодами специальностей.
+          </p>
+          <span className="row small" style={{ color: 'var(--brand)' }}>
+            Открыть <ArrowRight size={16} />
+          </span>
+        </Link>
       </section>
 
       <section className="section">

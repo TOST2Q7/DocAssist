@@ -1,4 +1,4 @@
-import { Database, FolderOpen, HelpCircle, Info, Send, Variable } from 'lucide-react';
+import { BookOpen, Database, FolderOpen, HelpCircle, Info, Send, Variable } from 'lucide-react';
 import type { MenuItem } from './types';
 
 /*
@@ -10,6 +10,7 @@ export const SERVICE_MENU: MenuItem[] = [
   { id: 'variables', title: 'Глобальные переменные', to: '/variables', icon: Variable },
   { id: 'base', title: 'База данных', to: '/base', icon: Database, badges: [{ kind: 'new' }] },
   { id: 'outbox', title: 'Предложения в базу', to: '/outbox', icon: Send, counter: 'outbox' },
+  { id: 'help', title: 'Справка: документы ЛСО', to: '/help', icon: BookOpen, badges: [{ kind: 'new' }] },
   { id: 'faq', title: 'Частые вопросы', to: '/faq', icon: HelpCircle },
   { id: 'about', title: 'О программе и обновления', to: '/about', icon: Info },
 ];

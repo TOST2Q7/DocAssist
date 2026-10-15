@@ -565,6 +565,25 @@ textarea.input {
   font-size: 0.85rem;
 }
 
+/* Поле поиска с лупой. */
+.search-box {
+  position: relative;
+  flex: 1 1 240px;
+  display: flex;
+  align-items: center;
+}
+.search-box > svg {
+  position: absolute;
+  left: 10px;
+}
+.search-box .input {
+  padding-left: 32px;
+}
+/* В колонке поле не растягивается по высоте (flex-basis действует по вертикали). */
+.stack > .search-box {
+  flex: none;
+}
+
 /* ---------- Списки и таблицы ---------- */
 .list {
   display: flex;

@@ -69,7 +69,8 @@ export default defineConfig(({ mode }) => {
               ],
             },
             workbox: {
-              globPatterns: ['**/*.{js,css,html,svg,png,woff2}'],
+              // webp — рисунки справки: без них офлайн справка была бы без картинок.
+              globPatterns: ['**/*.{js,css,html,svg,png,webp,woff2}'],
               maximumFileSizeToCacheInBytes: 5 * 1024 * 1024,
             },
           }),

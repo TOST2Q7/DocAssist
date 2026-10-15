@@ -69,7 +69,7 @@ export function Layout() {
         <div className="footer__inner">
           <span>DocAssist v{APP_VERSION} · работает локально, данные не покидают устройство</span>
           <span>
-            <Link to="/faq">Частые вопросы</Link> · <Link to="/about">О программе</Link>
+            <Link to="/help">Справка</Link> · <Link to="/faq">Частые вопросы</Link> · <Link to="/about">О программе</Link>
           </span>
         </div>
       </footer>

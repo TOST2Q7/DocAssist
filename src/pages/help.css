@@ -1,0 +1,239 @@
+/* ---------- Справка ---------- */
+.help [id] {
+  scroll-margin-top: calc(var(--header-h) + 12px);
+}
+.help h3 {
+  margin: 0;
+  font-size: 1.05rem;
+}
+.help p {
+  margin: 0;
+}
+.help-toc {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 24px;
+}
+.help-toc .chip {
+  padding: 4px 12px;
+}
+.help-list {
+  margin: 4px 0 0;
+  padding-left: 22px;
+}
+.help-list li + li {
+  margin-top: 2px;
+}
+
+/* Шаг пособия: номер в кружке и текст. */
+.help-step {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+}
+.help-step__n {
+  flex: 0 0 auto;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  background: var(--brand-soft);
+  color: var(--brand);
+  font-weight: 600;
+  font-size: 0.9rem;
+}
+.help-step__body {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding-top: 3px;
+}
+.help-step__title {
+  font-weight: 600;
+}
+
+/* Пакет документов кандидата. */
+.help-docs {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+}
+.help-docs > li {
+  padding: 8px 12px;
+}
+.help-docs > li + li {
+  border-top: 1px solid var(--border);
+}
+.help-docs__row {
+  align-items: center;
+  flex-wrap: wrap;
+}
+/* На узком экране название — целой строкой, кнопки образцов — под ним. */
+.help-docs__row > .spacer {
+  flex: 1 1 260px;
+}
+
+/* Рисунки. */
+.help-fig {
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-width: 100%;
+}
+.help-fig__img {
+  display: block;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-s);
+  background: #fff;
+  overflow: hidden;
+  cursor: zoom-in;
+  max-width: 100%;
+  width: fit-content;
+}
+.help-fig__img img {
+  display: block;
+  max-width: 100%;
+  height: auto;
+}
+.help-fig--small .help-fig__img img {
+  max-width: min(100%, 420px);
+}
+.help-fig figcaption {
+  font-size: 0.85rem;
+  color: var(--text-muted);
+}
+.help-gallery {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 16px;
+  align-items: start;
+}
+.help-gallery .help-fig__img {
+  width: 100%;
+}
+.help-gallery .help-fig__img img {
+  width: 100%;
+  max-height: 320px;
+  object-fit: contain;
+}
+.help-lightbox {
+  display: block;
+  max-width: 100%;
+  height: auto;
+  margin: 0 auto;
+  background: #fff;
+}
+
+/* Цвета папок со сканами. */
+.help-colors {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.help-dot {
+  display: inline-block;
+  width: 12px;
+  height: 12px;
+  border-radius: 3px;
+  vertical-align: -1px;
+}
+.help-dot--red {
+  background: #e5484d;
+}
+.help-dot--green {
+  background: #30a46c;
+}
+.help-dot--yellow {
+  background: #f5d90a;
+}
+.help-names .input.spacer {
+  flex: 1 1 220px;
+}
+.help-names__year {
+  width: 90px;
+}
+.help-names__list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.help-names__list li {
+  display: grid;
+  grid-template-columns: minmax(0, 210px) minmax(0, 1fr) auto;
+  gap: 4px 12px;
+  align-items: center;
+  padding: 4px 0;
+}
+.help-names__list li + li {
+  border-top: 1px solid var(--border);
+}
+.help-names__list .mono {
+  word-break: break-word;
+}
+@media (max-width: 560px) {
+  /* Узкий экран: что это — сверху, название и кнопка — под ним. */
+  .help-names__list li {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+  .help-names__list li > .muted {
+    grid-column: 1 / -1;
+  }
+}
+
+/* Учебные заведения. */
+.help-cities {
+  align-self: flex-start;
+}
+.help-inst > summary {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  list-style: none;
+}
+.help-inst > summary::-webkit-details-marker {
+  display: none;
+}
+.help-inst > summary::before {
+  content: '';
+  flex: 0 0 auto;
+  width: 7px;
+  height: 7px;
+  border-right: 2px solid var(--text-muted);
+  border-bottom: 2px solid var(--text-muted);
+  transform: rotate(-45deg);
+  transition: transform 0.12s;
+}
+.help-inst[open] > summary::before {
+  transform: rotate(45deg);
+}
+.help-inst__body {
+  margin-top: 10px;
+}
+.help-specs {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  font-size: 0.92rem;
+}
+.help-specs li {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 3px 0;
+}
+.help-specs li + li {
+  border-top: 1px dashed var(--border);
+}
