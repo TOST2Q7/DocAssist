@@ -25,6 +25,8 @@ export interface AppManifest {
   title: string;
   /** Одна строка для карточки и меню. */
   summary: string;
+  /** Коротко, одной фразой простыми словами — для плитки на обложке главной. Нет — берётся summary. */
+  tagline?: string;
   /** Подробное описание для главной страницы. */
   description?: string;
   icon: LucideIcon;

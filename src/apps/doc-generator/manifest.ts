@@ -5,6 +5,7 @@ import type { AppManifest } from '@/core/registry/types';
 const manifest: AppManifest = {
   id: 'doc-generator',
   title: 'Генератор документов',
+  tagline: 'Заявления, списки и справки по шаблонам Word',
   summary: 'Заполнение шаблонов Word данными из проверенных анкет и глобальных переменных: заявления, списки, справки.',
   icon: FileText,
   status: 'soon',

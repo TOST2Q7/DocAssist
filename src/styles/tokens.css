@@ -2,6 +2,11 @@
  * Дизайн-токены. Оформление — по фирменному стилю РСО (docs/RSO-BRAND.md):
  * основные цвета — синий и белый, шрифты — Akrobat (текст) и LIBRARY 3 AM (заголовки).
  * Синий логотипа в руководстве — CMYK C100 M75 Y0 K0, в sRGB ≈ #0054A6. Фирменные цвета меняются здесь — весь интерфейс подхватит.
+ *
+ * Образ — «синька»: синий РСО и белый — это цвета чертёжной синьки, а мастер работает с чертежами и бумагами.
+ * Отсюда тонкие линии, подписи моноширинным шрифтом, линейка, размерные линии, штамп и рамка листа.
+ * Исполнение — как у премиальных продуктов: чистый холодный фон, многослойные мягкие тени, стекло,
+ * свечение и подсветка от курсора, плавное движение.
  */
 :root {
   /* Фирменные шрифты, если установлены; иначе встроенные близкие (src/styles/fonts.css). */
@@ -9,14 +14,24 @@
   --font-display: 'LIBRARY 3 AM', 'Library 3 am', 'Library 3 am soft', 'Oswald Variable', 'Arial Narrow', sans-serif;
   /* Значения в полях — системный шрифт: в нём легче различить О/0, З/3, латиницу и кириллицу. */
   --font-data: system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
-  --font-mono: ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+  /* Подписи «как на чертеже»: номера, ярлыки, основная надпись; и код. */
+  --font-mono: 'IBM Plex Mono', ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
 
-  --radius-s: 6px;
-  --radius: 10px;
-  --radius-l: 16px;
-  --header-h: 60px;
+  /* Углы — собранные, но не острые. */
+  --radius-s: 5px;
+  --radius: 9px;
+  --radius-l: 14px;
+  --header-h: 56px;
   --gap: 16px;
   --tap: 40px;
+
+  /* Движение: короткое и мягкое; при «уменьшить движение» выключается (base.css). */
+  --ease: cubic-bezier(0.22, 0.8, 0.24, 1);
+  --ease-in-out: cubic-bezier(0.65, 0, 0.35, 1);
+  --ease-spring: cubic-bezier(0.34, 1.4, 0.64, 1);
+  --dur-fast: 140ms;
+  --dur: 240ms;
+  --dur-slow: 620ms;
 
   /* Фирменный синий РСО и белый. */
   --rso-blue: #0054a6;
@@ -26,89 +41,109 @@
   --brand-hover: #00468c;
   --brand-strong: #003a75;
   --brand-contrast: #ffffff;
-  --brand-soft: #e6eef9;
-  --brand-line: #b9cfec;
+  --brand-soft: #e7eef7;
+  --brand-line: #b7cbe6;
   --accent: #d42c23;
 
   /* Шапка и синие плашки — белым по синему, как логотип на синем фоне. */
   --header-bg: var(--rso-blue);
   --header-fg: #ffffff;
-  --header-fg-muted: rgb(255 255 255 / 78%);
+  --header-fg-muted: rgb(255 255 255 / 76%);
   --header-hover: rgb(255 255 255 / 14%);
   --panel-bg: var(--rso-blue);
-  --panel-bg-2: #003f80;
+  --panel-bg-2: #004a93;
   --panel-fg: #ffffff;
-  --panel-fg-muted: rgb(255 255 255 / 82%);
+  --panel-fg-muted: rgb(255 255 255 / 84%);
+  /* Линии миллиметровки на синем. */
+  --panel-grid: rgb(255 255 255 / 5.5%);
+  --panel-grid-major: rgb(255 255 255 / 11%);
+  --panel-line: rgb(255 255 255 / 55%);
 
-  --bg: #f1f4f9;
+  /* Чистая холодная бумага и тёмные чернила. */
+  --bg: #f5f7fa;
   --surface: #ffffff;
-  --surface-2: #edf1f7;
-  --surface-3: #e1e8f1;
-  --border: #d5dde8;
-  --border-strong: #b2bfcf;
-  --text: #121f36;
-  --text-muted: #4b5a70;
-  --text-faint: #6c7a90;
-  --focus: #2b78ee;
-  --shadow: 0 1px 2px rgb(10 37 80 / 6%), 0 3px 10px rgb(10 37 80 / 7%);
-  --shadow-l: 0 10px 36px rgb(10 37 80 / 20%);
+  --surface-2: #f1f4f8;
+  --surface-3: #e6ebf2;
+  --border: #e1e6ed;
+  --border-strong: #c5cdd8;
+  --rule: #d8dee7;
+  --text: #0b1424;
+  --text-muted: #4a5466;
+  --text-faint: #687386;
+  --focus: #0054a6;
+  /* Многослойные мягкие тени — объём без «грязи». */
+  --shadow: 0 1px 1px rgb(11 20 36 / 4%), 0 2px 4px rgb(11 20 36 / 4%), 0 8px 16px -8px rgb(11 20 36 / 10%);
+  --shadow-l: 0 2px 4px rgb(11 20 36 / 4%), 0 12px 24px -6px rgb(11 20 36 / 12%), 0 32px 64px -16px rgb(11 20 36 / 22%);
+  /* Подсветка от курсора на карточках. */
+  --glow: rgb(0 84 166 / 9%);
+  --glow-line: rgb(0 84 166 / 45%);
+  /* «Лист приподнят»: жёсткая тень со сдвигом, как у стопки бумаги. */
+  --lift: 4px 4px 0 var(--brand-line);
 
   --error: #c42b2b;
-  --error-soft: #fde8e8;
-  --warning: #9a5a00;
-  --warning-soft: #fff1d6;
+  --error-soft: #fbe7e5;
+  --warning: #965600;
+  --warning-soft: #fcefd3;
   --info: #0054a6;
-  --info-soft: #e6eef9;
-  --success: #1f7a37;
-  --success-soft: #e2f3e6;
+  --info-soft: #e7eef7;
+  --success: #1d7535;
+  --success-soft: #e1f0e2;
   /* «Слипшиеся» слова — отдельный цвет, чтобы не путать с ошибками. */
   --glued: #7a3fc0;
   --glued-soft: #f1e8fc;
-  --diff-del: #fbd5d5;
-  --diff-ins: #cdeed6;
+  --diff-del: #f8d4d1;
+  --diff-ins: #cdebd2;
 
   color-scheme: light;
 }
 
 :root[data-theme='dark'] {
-  --brand: #5c9df0;
-  --brand-hover: #82b5f5;
-  --brand-strong: #a9cbf8;
-  --brand-contrast: #061325;
-  --brand-soft: #142a4b;
-  --brand-line: #24406a;
+  --brand: #6ba7f2;
+  --brand-hover: #8dbbf6;
+  --brand-strong: #b3d2fa;
+  --brand-contrast: #06121f;
+  --brand-soft: #132a4a;
+  --brand-line: #24446f;
   --accent: #ff6b5e;
 
-  --header-bg: #0b2e5c;
+  --header-bg: #0a2d5a;
   --header-fg: #ffffff;
-  --header-fg-muted: rgb(255 255 255 / 75%);
+  --header-fg-muted: rgb(255 255 255 / 74%);
   --header-hover: rgb(255 255 255 / 12%);
-  --panel-bg: #0e3a73;
-  --panel-bg-2: #0a2a55;
+  --panel-bg: #0b3366;
+  --panel-bg-2: #092a55;
   --panel-fg: #ffffff;
   --panel-fg-muted: rgb(255 255 255 / 80%);
+  --panel-grid: rgb(255 255 255 / 6%);
+  --panel-grid-major: rgb(255 255 255 / 11%);
+  --panel-line: rgb(255 255 255 / 45%);
 
-  --bg: #0b1019;
-  --surface: #121a26;
-  --surface-2: #192231;
-  --surface-3: #222c3d;
-  --border: #263145;
-  --border-strong: #3a475c;
-  --text: #e6ebf3;
-  --text-muted: #a3afc1;
-  --text-faint: #7a879c;
-  --focus: #7aa7ff;
-  --shadow: 0 1px 2px rgb(0 0 0 / 40%);
-  --shadow-l: 0 10px 36px rgb(0 0 0 / 55%);
+  /* Тёмная тема — ночная синька: почти чёрный синий, светлые линии, свечение. */
+  --bg: #060a12;
+  --surface: #0c121d;
+  --surface-2: #111a29;
+  --surface-3: #182337;
+  --border: #1b2639;
+  --border-strong: #2b3b57;
+  --rule: #1f2c43;
+  --text: #e8eef7;
+  --text-muted: #a3b0c4;
+  --text-faint: #7a879d;
+  --focus: #8dbbf6;
+  --shadow: 0 1px 2px rgb(0 0 0 / 50%), 0 8px 16px -8px rgb(0 0 0 / 60%);
+  --shadow-l: 0 2px 4px rgb(0 0 0 / 40%), 0 24px 56px -12px rgb(0 0 0 / 75%);
+  --glow: rgb(107 167 242 / 10%);
+  --glow-line: rgb(107 167 242 / 55%);
+  --lift: 4px 4px 0 #1f3b62;
 
   --error: #ff7b7b;
-  --error-soft: #3a1d20;
+  --error-soft: #3a1d22;
   --warning: #f2b14c;
-  --warning-soft: #362a14;
+  --warning-soft: #33280f;
   --info: #79aefc;
-  --info-soft: #172a45;
+  --info-soft: #132a4a;
   --success: #64c87b;
-  --success-soft: #16301d;
+  --success-soft: #13301c;
   --glued: #bb93f5;
   --glued-soft: #2c2140;
   --diff-del: #4a2326;
