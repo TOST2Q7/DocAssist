@@ -42,8 +42,19 @@ export interface AppManifest {
   order?: number;
   /** Раздел приложения на странице «База данных» (просмотр и ручное добавление). Грузится только при открытии. */
   baseView?: LazyExoticComponent<ComponentType>;
+  /**
+   * Окно для файлов, перетащенных в любое место сайта (src/ui/FileDrop.tsx): что за файл, на чьё имя, куда сохранить.
+   * Используется первое приложение, у которого оно есть. Грузится только при первом перетаскивании.
+   */
+  fileDrop?: LazyExoticComponent<ComponentType<FileDropProps>>;
   /** Ленивая загрузка интерфейса (код приложения грузится только при открытии). */
   component?: LazyExoticComponent<ComponentType>;
+}
+
+export interface FileDropProps {
+  /** Файлы по порядку; пока окно открыто, в конец могут добавиться новые. */
+  files: File[];
+  onClose: () => void;
 }
 
 export interface MenuItem {

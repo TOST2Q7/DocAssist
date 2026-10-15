@@ -1,4 +1,7 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
-  <ellipse cx="32" cy="32" rx="31" ry="22" fill="#1d4fa0"/>
-  <text x="32" y="40" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-weight="700" font-size="22" fill="#fff" letter-spacing="0.5">РСО</text>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 40 40">
+  <rect x="1.5" y="2.5" width="37" height="35" rx="8" fill="#0054a6"/>
+  <rect x="4.75" y="5.75" width="30.5" height="28.5" rx="5.5" fill="none" stroke="#fff" stroke-width="1.3" stroke-dasharray="2.4 2" opacity="0.7"/>
+  <path d="M13.5 10.5h8.6l5.4 5.4v12.6a1.5 1.5 0 0 1-1.5 1.5H13.5a1.5 1.5 0 0 1-1.5-1.5V12a1.5 1.5 0 0 1 1.5-1.5Z" fill="#fff"/>
+  <path d="M22 10.6v4.4a1 1 0 0 0 1 1h4.4" fill="none" stroke="#0054a6" stroke-width="1.3" stroke-linejoin="round"/>
+  <path d="m15.6 22.4 2.8 2.8 5.2-5.6" fill="none" stroke="#0054a6" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/>
 </svg>

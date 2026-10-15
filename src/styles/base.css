@@ -24,15 +24,22 @@ h3,
 h4 {
   line-height: 1.25;
   margin: 0 0 0.5em;
+  font-weight: 700;
 }
+/* Заголовки страниц — дополнительным фирменным шрифтом, прописными, как в материалах РСО. */
 h1 {
-  font-size: 1.6rem;
+  font-family: var(--font-display);
+  font-size: 2rem;
+  font-weight: 600;
+  line-height: 1.1;
+  text-transform: uppercase;
+  letter-spacing: 0.01em;
 }
 h2 {
-  font-size: 1.25rem;
+  font-size: 1.3rem;
 }
 h3 {
-  font-size: 1.05rem;
+  font-size: 1.08rem;
 }
 p {
   margin: 0 0 0.75em;
@@ -61,6 +68,18 @@ select,
 textarea {
   font: inherit;
   color: inherit;
+}
+/* Данные (ФИО, паспорт, адреса) — системным шрифтом: в нём однозначнее О/0, З/3, латиница и кириллица. */
+input,
+select,
+textarea {
+  font-family: var(--font-data);
+}
+.num,
+input,
+.badge,
+.cnt {
+  font-variant-numeric: tabular-nums;
 }
 
 .visually-hidden {

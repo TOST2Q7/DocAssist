@@ -9,10 +9,22 @@
   position: sticky;
   top: 0;
   z-index: 50;
-  height: var(--header-h);
-  background: var(--surface);
-  border-bottom: 1px solid var(--border);
+  background: var(--header-bg);
+  color: var(--header-fg);
   padding-top: env(safe-area-inset-top);
+  box-shadow: 0 2px 14px rgb(10 37 80 / 16%);
+}
+.header .icon-btn {
+  color: var(--header-fg);
+}
+.header .icon-btn:hover {
+  background: var(--header-hover);
+}
+.header .icon-btn .dot {
+  border-color: var(--header-bg);
+}
+.header :focus-visible {
+  outline-color: var(--header-fg);
 }
 .header__inner {
   height: var(--header-h);
@@ -31,22 +43,38 @@
   align-items: center;
   gap: 10px;
   text-decoration: none;
-  color: var(--text);
-  font-weight: 700;
-  font-size: 1.05rem;
+  color: var(--header-fg);
   border-radius: var(--radius-s);
+  /* В синей шапке нашивка белая, документ синий. */
+  --mark-bg: #ffffff;
+  --mark-fg: var(--header-bg);
 }
 .logo__mark {
-  width: 46px;
-  height: 32px;
+  width: 36px;
+  height: 36px;
   flex: none;
 }
-.logo__sub {
-  font-weight: 400;
-  color: var(--text-muted);
-  font-size: 0.85rem;
+.logo__text {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
 }
-@media (max-width: 520px) {
+.logo__name {
+  font-weight: 800;
+  font-size: 1.2rem;
+  letter-spacing: 0.01em;
+}
+.logo__sub {
+  font-family: var(--font-display);
+  font-weight: 500;
+  font-size: 0.8rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--header-fg-muted);
+  padding-left: 10px;
+  border-left: 1px solid rgb(255 255 255 / 35%);
+}
+@media (max-width: 560px) {
   .logo__sub {
     display: none;
   }
@@ -71,6 +99,29 @@
   margin: 0;
 }
 
+/* Надпись над заголовком; «лычки» слева — как на нашивке бойцовки. */
+.kicker {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-family: var(--font-display);
+  font-weight: 500;
+  font-size: 0.8rem;
+  line-height: 1.2;
+  text-transform: uppercase;
+  letter-spacing: 0.09em;
+  color: var(--brand);
+  margin-bottom: 6px;
+}
+.kicker::before {
+  content: '';
+  flex: none;
+  width: 16px;
+  height: 9px;
+  background: repeating-linear-gradient(to bottom, currentColor 0 3px, transparent 3px 6px);
+  border-radius: 1px;
+}
+
 /* ---------- Кнопки ---------- */
 .btn {
   display: inline-flex;
@@ -83,11 +134,11 @@
   border: 1px solid var(--border-strong);
   background: var(--surface);
   color: var(--text);
-  font-weight: 500;
+  font-weight: 600;
   cursor: pointer;
   text-decoration: none;
   white-space: nowrap;
-  transition: background 0.12s, border-color 0.12s;
+  transition: background 0.12s, border-color 0.12s, box-shadow 0.12s;
 }
 .btn:hover {
   background: var(--surface-2);
@@ -100,10 +151,35 @@
   background: var(--brand);
   border-color: var(--brand);
   color: var(--brand-contrast);
+  box-shadow: 0 1px 2px rgb(0 40 90 / 20%);
 }
 .btn--primary:hover {
   background: var(--brand-hover);
   border-color: var(--brand-hover);
+}
+.btn--lg {
+  min-height: 48px;
+  padding: 0 20px;
+  font-size: 1.02rem;
+  border-radius: var(--radius);
+}
+/* Кнопки на синей плашке: белая и контурная. */
+.btn--light {
+  background: #ffffff;
+  border-color: #ffffff;
+  color: #0054a6;
+}
+.btn--light:hover {
+  background: #e6eef9;
+  border-color: #e6eef9;
+}
+.btn--outline-light {
+  background: transparent;
+  border-color: rgb(255 255 255 / 60%);
+  color: #ffffff;
+}
+.btn--outline-light:hover {
+  background: rgb(255 255 255 / 12%);
 }
 .btn--ghost {
   border-color: transparent;
@@ -206,8 +282,25 @@
   align-items: center;
   justify-content: space-between;
   padding: 8px 8px 8px 16px;
-  border-bottom: 1px solid var(--border);
   min-height: var(--header-h);
+  background: var(--header-bg);
+  color: var(--header-fg);
+}
+.drawer__head strong {
+  font-family: var(--font-display);
+  font-weight: 500;
+  font-size: 1.1rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+.drawer__head .icon-btn {
+  color: var(--header-fg);
+}
+.drawer__head .icon-btn:hover {
+  background: var(--header-hover);
+}
+.drawer__head :focus-visible {
+  outline-color: var(--header-fg);
 }
 .drawer__body {
   overflow-y: auto;
@@ -221,9 +314,11 @@
   border-top: 1px solid var(--border);
 }
 .menu-section__title {
-  font-size: 0.75rem;
+  font-family: var(--font-display);
+  font-size: 0.78rem;
+  font-weight: 500;
   text-transform: uppercase;
-  letter-spacing: 0.04em;
+  letter-spacing: 0.08em;
   color: var(--text-faint);
   padding: 4px 8px 6px;
 }
@@ -243,7 +338,8 @@
 .menu-item.active {
   background: var(--brand-soft);
   color: var(--brand);
-  font-weight: 600;
+  font-weight: 700;
+  box-shadow: inset 3px 0 0 var(--brand);
 }
 .menu-item--disabled {
   color: var(--text-faint);
@@ -304,6 +400,9 @@
   border-radius: var(--radius);
   padding: 16px;
 }
+.card--raised {
+  box-shadow: var(--shadow);
+}
 .card--flat {
   box-shadow: none;
 }
@@ -325,27 +424,45 @@
   gap: var(--gap);
 }
 .app-card {
+  position: relative;
   display: flex;
   flex-direction: column;
   gap: 8px;
+  padding: 18px;
   text-decoration: none;
   color: var(--text);
-  transition: border-color 0.12s, box-shadow 0.12s;
+  border-top: 4px solid var(--brand);
+  transition: border-color 0.12s, box-shadow 0.12s, transform 0.12s;
 }
 a.app-card:hover {
   border-color: var(--brand);
-  box-shadow: var(--shadow);
+  box-shadow: var(--shadow-l);
+  transform: translateY(-1px);
 }
 .app-card--disabled {
-  opacity: 0.7;
+  border-top-color: var(--border-strong);
+  background: var(--surface-2);
+}
+.app-card--disabled .app-card__icon {
+  background: var(--surface-3);
+  color: var(--text-faint);
 }
 .app-card__icon {
-  width: 40px;
-  height: 40px;
-  border-radius: var(--radius-s);
+  width: 44px;
+  height: 44px;
+  border-radius: var(--radius);
   display: grid;
   place-items: center;
-  background: var(--brand-soft);
+  background: var(--brand);
+  color: var(--brand-contrast);
+}
+.app-card__go {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: auto;
+  padding-top: 6px;
+  font-weight: 700;
   color: var(--brand);
 }
 .app-card__top {
@@ -356,6 +473,7 @@ a.app-card:hover {
 }
 .app-card h3 {
   margin: 0;
+  font-size: 1.18rem;
 }
 .app-card p {
   color: var(--text-muted);
@@ -565,25 +683,6 @@ textarea.input {
   font-size: 0.85rem;
 }
 
-/* Поле поиска с лупой. */
-.search-box {
-  position: relative;
-  flex: 1 1 240px;
-  display: flex;
-  align-items: center;
-}
-.search-box > svg {
-  position: absolute;
-  left: 10px;
-}
-.search-box .input {
-  padding-left: 32px;
-}
-/* В колонке поле не растягивается по высоте (flex-basis действует по вертикали). */
-.stack > .search-box {
-  flex: none;
-}
-
 /* ---------- Списки и таблицы ---------- */
 .list {
   display: flex;
@@ -650,10 +749,12 @@ a.list__item:hover {
   vertical-align: top;
 }
 .table th {
-  font-size: 0.8rem;
+  font-size: 0.78rem;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
   color: var(--text-muted);
   background: var(--surface-2);
-  font-weight: 600;
+  font-weight: 700;
 }
 .table tr:last-child td {
   border-bottom: 0;
@@ -749,6 +850,13 @@ a.list__item:hover {
 .toast button {
   color: inherit;
 }
+/* Уведомление тёмное — светлый фон кнопки при наведении сделал бы текст невидимым. */
+.toast button:hover {
+  background: rgb(255 255 255 / 14%);
+}
+:root[data-theme='dark'] .toast button:hover {
+  background: rgb(0 0 0 / 10%);
+}
 
 .update-banner {
   background: var(--brand-soft);
@@ -767,8 +875,12 @@ a.list__item:hover {
 
 .footer {
   border-top: 1px solid var(--border);
+  background: var(--surface);
   color: var(--text-faint);
-  font-size: 0.82rem;
+  font-size: 0.84rem;
+}
+.footer a {
+  color: var(--text-muted);
 }
 .footer__inner {
   max-width: 1200px;
@@ -798,7 +910,7 @@ details.faq + details.faq {
 details.faq summary {
   cursor: pointer;
   padding: 14px 0;
-  font-weight: 600;
+  font-weight: 700;
   display: flex;
   align-items: center;
   gap: 8px;
@@ -809,6 +921,19 @@ details.faq summary::-webkit-details-marker {
 }
 details.faq[open] summary {
   border-bottom: 1px solid var(--border);
+  color: var(--brand);
+}
+details.faq summary::after {
+  content: '+';
+  flex: none;
+  width: 24px;
+  text-align: center;
+  font-size: 1.3rem;
+  line-height: 1;
+  color: var(--brand);
+}
+details.faq[open] summary::after {
+  content: '−';
 }
 details.faq .faq__answer {
   padding: 12px 0 14px;
@@ -830,18 +955,7 @@ details.faq .faq__answer {
   }
 }
 
-.hero {
-  padding: 24px 0 8px;
-}
-.hero h1 {
-  font-size: clamp(1.5rem, 3.5vw, 2.1rem);
-  max-width: 760px;
-}
-.hero__lead {
-  font-size: 1.05rem;
-  color: var(--text-muted);
-  max-width: 720px;
-}
+
 a.chip {
   color: var(--text);
   text-decoration: none;
@@ -1079,4 +1193,577 @@ a.chip:hover {
   flex: 1 0 auto;
   border-bottom: 1px solid var(--border-strong);
   margin-bottom: -1px;
+}
+
+/* ---------- Главная: рабочее место мастера ---------- */
+.home {
+  padding-top: 20px;
+}
+/* Синяя плашка — белым по фирменному синему, как логотип РСО на синем фоне. */
+.hero-panel {
+  position: relative;
+  overflow: hidden;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 260px;
+  align-items: center;
+  gap: 24px;
+  padding: 32px 36px;
+  border-radius: var(--radius-l);
+  background:
+    radial-gradient(120% 140% at 100% 0%, rgb(255 255 255 / 14%) 0%, transparent 55%),
+    linear-gradient(135deg, var(--panel-bg) 0%, var(--panel-bg-2) 100%);
+  color: var(--panel-fg);
+  box-shadow: var(--shadow);
+}
+.hero-panel h1 {
+  font-size: clamp(2rem, 5vw, 3.1rem);
+  margin: 0 0 12px;
+}
+.hero-panel__lead {
+  font-size: 1.08rem;
+  color: var(--panel-fg-muted);
+  max-width: 640px;
+  margin: 0 0 22px;
+}
+.hero-panel__actions {
+  gap: 10px;
+}
+.hero-panel__hint {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  max-width: 640px;
+  margin: 18px 0 0;
+  font-size: 0.9rem;
+  color: var(--panel-fg-muted);
+}
+.hero-panel__hint > svg {
+  flex: none;
+  margin-top: 3px;
+}
+.hero-panel__art {
+  width: 100%;
+  height: auto;
+  color: #ffffff;
+}
+.hero-panel__patch-text {
+  font-family: var(--font-display);
+  font-weight: 600;
+  font-size: 30px;
+  letter-spacing: 3px;
+}
+.kicker--light {
+  color: var(--panel-fg-muted);
+}
+@media (max-width: 760px) {
+  .hero-panel {
+    grid-template-columns: 1fr;
+    padding: 24px 20px;
+  }
+  .hero-panel__art {
+    display: none;
+  }
+  .hero-panel__actions .btn {
+    flex: 1 1 100%;
+  }
+}
+
+.steps {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
+  gap: 12px;
+}
+.step__link {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  height: 100%;
+  padding: 16px 16px 16px 60px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+  color: var(--text);
+  text-decoration: none;
+  transition: border-color 0.12s, box-shadow 0.12s;
+}
+a.step__link:hover {
+  border-color: var(--brand);
+  box-shadow: var(--shadow);
+}
+.step__num {
+  position: absolute;
+  left: 14px;
+  top: 14px;
+  width: 34px;
+  height: 34px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  background: var(--brand);
+  color: var(--brand-contrast);
+  font-family: var(--font-display);
+  font-weight: 600;
+  font-size: 1.15rem;
+  line-height: 1;
+}
+.step__title {
+  font-size: 1.05rem;
+}
+.step__text {
+  color: var(--text-muted);
+  font-size: 0.9rem;
+}
+
+.recent .list__item {
+  min-height: 58px;
+}
+.recent__go {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--brand);
+  font-weight: 700;
+  font-size: 0.9rem;
+  white-space: nowrap;
+}
+.recent__more {
+  justify-content: center;
+  gap: 6px;
+  color: var(--brand);
+  font-weight: 700;
+  min-height: 44px;
+}
+.recent--empty {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 14px;
+  border: 1px dashed var(--border-strong);
+  border-radius: var(--radius);
+  background: var(--surface);
+}
+@media (max-width: 520px) {
+  .recent__go {
+    font-size: 0;
+  }
+}
+
+.tiles {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: 10px;
+}
+.tile {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 56px;
+  padding: 10px 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+  color: var(--text);
+  font-weight: 600;
+  text-decoration: none;
+  transition: border-color 0.12s, background 0.12s;
+}
+.tile:hover {
+  border-color: var(--brand);
+  background: var(--brand-soft);
+}
+
+.facts {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 12px 20px;
+  padding: 18px 20px;
+  border-radius: var(--radius);
+  background: var(--brand-soft);
+  border: 1px solid var(--brand-line);
+}
+.fact {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+}
+.fact > svg {
+  flex: none;
+  margin-top: 2px;
+}
+/* Итоговая строка под фактами — на всю ширину, отделена линией. */
+.fact--wide {
+  grid-column: 1 / -1;
+  padding-top: 12px;
+  border-top: 1px solid var(--brand-line);
+}
+
+/* ---------- Материалы РСО ---------- */
+.swatches {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 12px;
+}
+.swatch {
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+  overflow: hidden;
+}
+.swatch__color {
+  height: 96px;
+  display: flex;
+  align-items: flex-end;
+  padding: 10px 12px;
+  font-family: var(--font-display);
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: #0054a6;
+  border-bottom: 1px solid var(--border);
+}
+.swatch__color--dark {
+  color: #ffffff;
+}
+.swatch__body {
+  padding: 10px 12px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.font-sample {
+  font-size: 1.7rem;
+  line-height: 1.2;
+  font-weight: 700;
+  color: var(--brand);
+  overflow-wrap: anywhere;
+}
+.rules-short {
+  margin: 0;
+  padding-left: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.rules-short li::marker {
+  color: var(--brand);
+}
+
+/* Поле поиска со значком лупы. */
+.search-box {
+  position: relative;
+  flex: 1 1 240px;
+  display: flex;
+  align-items: center;
+}
+.search-box > svg {
+  position: absolute;
+  left: 10px;
+}
+.search-box .input {
+  padding-left: 32px;
+}
+.stack > .search-box {
+  flex: none;
+}
+
+/* ---------- Перетаскивание файлов в окно ---------- */
+.drop-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 400;
+  display: flex;
+  padding: 16px;
+  background: rgb(0 0 0 / 35%);
+}
+/* Целью перетаскивания остаётся только само затемнение. */
+.drop-overlay * {
+  pointer-events: none;
+}
+.drop-overlay__frame {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 24px;
+  text-align: center;
+  border: 3px dashed var(--brand);
+  border-radius: var(--radius-l);
+  background: var(--surface);
+  background: color-mix(in srgb, var(--surface) 94%, transparent);
+  box-shadow: var(--shadow-l);
+}
+.drop-overlay__frame strong {
+  font-size: 1.25rem;
+}
+
+/* ---------- Окно «Новый файл» ---------- */
+.modal.incoming {
+  width: min(640px, 100%);
+}
+.incoming__file {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.incoming__thumb {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 64px;
+  height: 64px;
+  padding: 0;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-s);
+  background: var(--surface-2);
+  color: var(--text-muted);
+}
+button.incoming__thumb {
+  cursor: zoom-in;
+}
+.incoming__thumb img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.incoming__thumb.is-big {
+  width: 100%;
+  height: auto;
+  cursor: zoom-out;
+}
+.incoming__thumb.is-big img {
+  height: auto;
+  max-height: 55vh;
+  object-fit: contain;
+}
+.incoming__meta {
+  flex: 1;
+  min-width: 0;
+}
+.incoming__name {
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+.incoming__ach {
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 8px;
+}
+
+/* Пункты по порядку: пройденные — с ответом, текущий раскрыт. */
+.wizard {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.wizard__step {
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+}
+.wizard__step.is-current {
+  border-color: var(--brand);
+  box-shadow: 0 0 0 1px var(--brand);
+}
+.wizard__head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  min-height: var(--tap);
+  padding: 8px 12px;
+  border: 0;
+  border-radius: inherit;
+  background: transparent;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.wizard__head:disabled {
+  cursor: default;
+  color: inherit;
+}
+.wizard__head:not(:disabled):hover {
+  background: var(--surface-2);
+}
+.wizard__num {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background: var(--surface-3);
+  color: var(--text-muted);
+  font-size: 0.8rem;
+  font-weight: 700;
+}
+.wizard__step.is-current .wizard__num {
+  background: var(--brand);
+  color: var(--brand-contrast);
+}
+.wizard__step.is-done .wizard__num {
+  background: var(--success-soft);
+  color: var(--success);
+}
+.wizard__title {
+  flex: none;
+  font-weight: 600;
+}
+.wizard__step:not(.is-current):not(.is-done) .wizard__title {
+  color: var(--text-faint);
+}
+.wizard__answer {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  text-align: right;
+  font-size: 0.86rem;
+  color: var(--text-muted);
+}
+.wizard__body {
+  padding: 4px 12px 12px;
+}
+
+/* Варианты ответа плитками. */
+.choice-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(210px, 1fr));
+  gap: 8px;
+}
+.choice-grid--compact {
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: 6px;
+}
+.choice {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  min-height: var(--tap);
+  padding: 10px 12px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-s);
+  background: var(--surface);
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.choice:hover {
+  background: var(--surface-2);
+}
+.choice.is-selected,
+.btn.is-selected {
+  border-color: var(--brand);
+  background: var(--brand-soft);
+  box-shadow: inset 0 0 0 1px var(--brand);
+}
+.choice--compact {
+  align-items: center;
+  padding: 7px 10px;
+  font-size: 0.92rem;
+}
+.choice__icon {
+  flex: none;
+  margin-top: 2px;
+  color: var(--brand);
+}
+.choice__text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+.choice__title {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  font-weight: 600;
+}
+.choice--compact .choice__title {
+  font-weight: 500;
+}
+.choice__hint {
+  font-size: 0.82rem;
+  color: var(--text-muted);
+}
+
+/* Выбор человека. */
+.owner-list {
+  display: flex;
+  flex-direction: column;
+  max-height: 260px;
+  overflow-y: auto;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-s);
+}
+.owner-opt {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 0 8px;
+  padding: 6px 10px;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.owner-opt + .owner-opt {
+  border-top: 1px solid var(--border);
+}
+.owner-opt.is-active {
+  background: var(--brand-soft);
+}
+.owner-opt__name {
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.owner-opt__sub {
+  grid-column: 1;
+  font-size: 0.82rem;
+  color: var(--text-muted);
+}
+.owner-opt > svg {
+  grid-column: 2;
+  grid-row: 1 / 3;
+  color: var(--brand);
+}
+
+.input-suffix {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.input-suffix > .input {
+  flex: 1;
+  min-width: 0;
+}
+.input-suffix__ext {
+  font-family: var(--font-mono);
+  color: var(--text-muted);
+}
+.save-path {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  color: var(--text-muted);
+  overflow-wrap: anywhere;
+}
+.save-path > svg {
+  flex: none;
+  margin-top: 3px;
 }

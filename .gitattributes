@@ -1,2 +1,7 @@
 # Готовая сборка одним файлом: не показывать построчный дифф, считать сгенерированной.
 DocAssist.html -diff linguist-generated=true
+# Скрипты помощника — всегда с переводом строки LF (иначе на Mac не запустятся).
+tools/da text eol=lf
+tools/*.sh text eol=lf
+tools/*.command text eol=lf
+tools/lib/*.sh text eol=lf

@@ -65,8 +65,8 @@ export function HelpImportCard({ checker }: { checker: AnketaChecker }) {
       </p>
       {plan.unused.length > 0 && (
         <Alert kind="warning">
-          Код проверки {plan.unused.length > 1 ? 'столбцов' : 'столбца'} «{plan.unused.join('», «')}» не берёт значения из базы (нет base.check) —{' '}
-          {plan.unused.length > 1 ? 'они не будут добавлены' : 'эти значения не будут добавлены'}.
+          {plan.unused.length > 1 ? 'Столбцы' : 'Столбец'} «{plan.unused.join('», «')}» сейчас не {plan.unused.length > 1 ? 'сверяются' : 'сверяется'} с
+          базой (так настроена проверка) — эти значения не будут добавлены.
         </Alert>
       )}
       <div className="row">

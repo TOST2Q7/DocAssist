@@ -1,4 +1,4 @@
-import { ClipboardCheck, Copy, Database, Image as ImageIcon, Mail, Search } from 'lucide-react';
+import { ClipboardCheck, Copy, Database, FolderOpen, Image as ImageIcon, Mail, Search } from 'lucide-react';
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { markSeen } from '@/core/registry/badges';
@@ -219,6 +219,13 @@ function CandidateSection({ onOpen }: { onOpen: (f: Figure) => void }) {
         <p>Назовите каждый скан документа «Фамилия И.О. - Название документа».</p>
         <Fig fig={FIG.scanNames} onOpen={onOpen} small />
         <FileNames />
+        <Alert kind="info">
+          Сканы можно хранить и в DocAssist: перетащите файлы в окно — приложение{' '}
+          <Link to="/apps/lichnye-dela">
+            <FolderOpen size={14} style={{ verticalAlign: '-2px' }} /> «Личные дела»
+          </Link>{' '}
+          спросит, что это за документ и чей он, положит в личную папку «Фамилия Имя Отчество» и переименует по шаблону.
+        </Alert>
       </Step>
 
       <Step n="5" title="Заполнить учетную карточку члена организации на каждого кандидата">

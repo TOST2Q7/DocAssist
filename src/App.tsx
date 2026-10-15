@@ -8,6 +8,7 @@ import { FaqPage } from '@/pages/FaqPage';
 import { HomePage } from '@/pages/HomePage';
 import { NotFoundPage } from '@/pages/NotFoundPage';
 import { OutboxPage } from '@/pages/OutboxPage';
+import { RsoPage } from '@/pages/RsoPage';
 import { VariablesPage } from '@/pages/VariablesPage';
 import { WorkspacePage } from '@/pages/WorkspacePage';
 import { AppHost } from '@/ui/AppHost';
@@ -42,6 +43,7 @@ const router = createHashRouter([
           </Suspense>
         ),
       },
+      { path: '/rso', element: <RsoPage /> },
       { path: '/faq', element: <FaqPage /> },
       { path: '/about', element: <AboutPage /> },
       { path: '*', element: <NotFoundPage /> },

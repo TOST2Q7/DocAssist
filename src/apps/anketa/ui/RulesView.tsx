@@ -369,7 +369,7 @@ function FieldEditor({
       <div className="field">
         <button type="button" className="btn btn--sm code-toggle" onClick={() => setCodeOpen(!codeOpen)} aria-expanded={codeOpen}>
           {codeOpen ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
-          <Code2 size={16} /> Код проверки (Lua){f.script !== def.script ? ' — изменён' : ''}
+          <Code2 size={16} /> Код проверки — для настройщика{f.script !== def.script ? ' (изменён)' : ''}
           {compileError && <span className="badge badge--error">ошибка в коде</span>}
         </button>
         {!codeOpen && compileError && (
@@ -413,7 +413,7 @@ function CommonEditor({ checks, env, trees, custom, readOnly, onSave }: { checks
   return (
     <div className="rule-editor stack">
       <p className="small muted" style={{ margin: 0 }}>
-        Выполняются для каждой ячейки перед проверкой столбца: только пробелы, «й» из двух символов, латинские буквы в русских словах.
+        Проверки сразу для всех ячеек: только пробелы, «й», записанная двумя символами, латинские буквы в русских словах.
       </p>
       <Controls controls={controls} settings={c.settings} onChange={(settings) => setC({ ...c, settings })} readOnly={readOnly} />
       <div className="field">
@@ -422,7 +422,7 @@ function CommonEditor({ checks, env, trees, custom, readOnly, onSave }: { checks
       </div>
       <button type="button" className="btn btn--sm code-toggle" onClick={() => setCodeOpen(!codeOpen)} aria-expanded={codeOpen}>
         {codeOpen ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
-        <Code2 size={16} /> Код общих проверок (Lua){error && <span className="badge badge--error">ошибка в коде</span>}
+        <Code2 size={16} /> Код общих проверок — для настройщика{error && <span className="badge badge--error">ошибка в коде</span>}
       </button>
       {codeOpen && <CodeSection script={c.script} onChange={(script) => setC({ ...c, script })} defaultScript={DEFAULT_COMMON} error={error} functions={checker.libraryFunctions} trees={trees} readOnly={readOnly} title="Общие проверки" />}
       <div className="row">
@@ -447,8 +447,8 @@ function LibraryEditor({ checks, trees, custom, readOnly, onSave }: { checks: Re
   return (
     <div className="rule-editor stack">
       <p className="small muted" style={{ margin: 0 }}>
-        Свои функции на Lua — их видят все проверки. Функция, которая принимает текст и возвращает true/false, появится в
-        конструкторе ячейки как проверка части.
+        Для настройщика: свои функции на Lua — их видят все проверки. Функция, которая принимает текст и возвращает true/false,
+        появится в конструкторе ячейки как проверка части. Подробно — вкладка «Справка».
       </p>
       <CodeSection script={code} onChange={setCode} defaultScript={DEFAULT_LIBRARY} error={checker.libraryError} functions={checker.libraryFunctions} trees={trees} readOnly={readOnly} title="Моя библиотека" />
       {checker.libraryFunctions.length > 0 && <div className="small muted">Функции: {checker.libraryFunctions.map((f) => `${f}()`).join(', ')}</div>}
@@ -554,8 +554,9 @@ export function RulesView({ onHelp }: { onHelp?: () => void }) {
       {readOnly && <Alert kind="warning">Правила сохранены более новой версией DocAssist — сейчас только просмотр.</Alert>}
       <div className="row">
         <p className="muted spacer" style={{ margin: 0 }}>
-          Каждую ячейку проверяет короткий код на Lua. Обычно хватает <strong>настроек</strong> столбца — переключателей и полей; код
-          открывается отдельно, с подсказками. База сначала пустая — значения попадают в неё, когда вы их подтверждаете.
+          Здесь настраивается, как проверяется каждый столбец анкеты. Нажмите на столбец: сверху — <strong>настройки</strong>{' '}
+          (переключатели и поля), ниже можно проверить любое значение. Не забудьте нажать «Сохранить». База сначала пустая — значения
+          попадают в неё, когда вы их подтверждаете.
         </p>
         {onHelp && (
           <button className="btn" onClick={onHelp}>
@@ -655,7 +656,7 @@ export function RulesView({ onHelp }: { onHelp?: () => void }) {
         <section className={`card rule ${open === 'library' ? 'rule--open' : ''}`}>
           <button className="rule__head" onClick={() => setOpen(open === 'library' ? null : 'library')} aria-expanded={open === 'library'}>
             {open === 'library' ? <ChevronDown size={18} /> : <ChevronRight size={18} />}
-            <span className="rule__title">Моя библиотека — свои функции на Lua</span>
+            <span className="rule__title">Свои функции — для настройщика</span>
             {store.stored?.library !== undefined && <span className="badge badge--updated">изменено</span>}
             {ctx.checker.libraryError && <span className="badge badge--error">ошибка в коде</span>}
           </button>
