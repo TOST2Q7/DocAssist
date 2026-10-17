@@ -9,6 +9,7 @@ import { parseOrder } from '@/shared/cell/template';
 import { useToast } from '@/ui/Toast';
 import { WorkspaceGate } from '@/ui/WorkspaceGate';
 import type { AnketaChecker } from '../lua/checker';
+import { HelpImportCard } from './HelpImportCard';
 import { useChecker, useChecks, useTreeNames } from './hooks';
 import '../anketa.css';
 
@@ -313,6 +314,7 @@ function BaseTrees() {
           ))}
         </select>
       </div>
+      <HelpImportCard checker={checker} />
       {shown.map((n) => (
         <TreeCard key={n} name={n} checker={checker} />
       ))}

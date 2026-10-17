@@ -53,11 +53,11 @@ export default defineConfig(({ mode }) => {
             registerType: 'prompt',
             includeAssets: ['favicon.svg', 'apple-touch-icon.png'],
             manifest: {
-              name: 'DocAssist — документы РСО',
+              name: 'DocAssist — рабочее место мастера РСО',
               short_name: 'DocAssist',
-              description: 'Ускорение и автоматизация работы с документами Российских студенческих отрядов. Работает локально и офлайн.',
+              description: 'Рабочее место мастера студенческого отряда: проверка анкет и документы РСО. Работает локально и офлайн.',
               lang: 'ru',
-              theme_color: '#1d4fa0',
+              theme_color: '#0054a6',
               background_color: '#ffffff',
               display: 'standalone',
               start_url: base,
@@ -65,11 +65,12 @@ export default defineConfig(({ mode }) => {
               icons: [
                 { src: 'pwa-192.png', sizes: '192x192', type: 'image/png' },
                 { src: 'pwa-512.png', sizes: '512x512', type: 'image/png' },
-                { src: 'pwa-512.png', sizes: '512x512', type: 'image/png', purpose: 'maskable' },
+                { src: 'pwa-maskable-512.png', sizes: '512x512', type: 'image/png', purpose: 'maskable' },
               ],
             },
             workbox: {
-              globPatterns: ['**/*.{js,css,html,svg,png,woff2}'],
+              // webp — рисунки справки: без них офлайн справка была бы без картинок.
+              globPatterns: ['**/*.{js,css,html,svg,png,webp,woff2}'],
               maximumFileSizeToCacheInBytes: 5 * 1024 * 1024,
             },
           }),

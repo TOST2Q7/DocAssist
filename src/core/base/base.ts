@@ -39,21 +39,39 @@ export interface AddPathOptions {
   share?: boolean;
 }
 
-/** Добавить путь в древо. Возвращает false, если такой путь уже есть целиком. */
-export async function addPath(ws: Workspace, tree: string, path: Step[], opts: AddPathOptions): Promise<boolean> {
-  if (!path.length) return false;
-  const store = baseStore(ws, tree);
-  await store.load();
+/** Запись для пути, которого ещё нет в древе (null — путь уже есть целиком). */
+function newEntry(entries: BaseEntry[], path: Step[], source: string): BaseEntry | null {
+  if (!path.length) return null;
   // Прикрепляем к тому, что уже есть (с пропуском уровней, которых в пути нет), чтобы не плодить двойников.
-  const current = new BaseTree(store.get().data.entries);
+  const current = new BaseTree(entries);
   const { node, matched } = current.resolve(path);
-  if (matched === path.length) return false;
+  if (matched === path.length) return null;
   const full = [...current.pathOf(node), ...path.slice(matched)];
   const clean = full.map((s) => ({ k: s.k, v: s.v, ...(s.t ? { t: s.t } : {}), ...(s.a ? { a: true } : {}) }));
-  const entry: BaseEntry = { id: uid('b_'), path: clean, addedAt: new Date().toISOString(), source: opts.source };
-  store.update((d) => ({ entries: [...d.entries, entry] }));
-  if (opts.share !== false) addContribution(ws, { source: opts.source, dictionary: tree, label: chainText(clean), entry: clean });
-  return true;
+  return { id: uid('b_'), path: clean, addedAt: new Date().toISOString(), source };
+}
+
+/** Добавить путь в древо. Возвращает false, если такой путь уже есть целиком. */
+export async function addPath(ws: Workspace, tree: string, path: Step[], opts: AddPathOptions): Promise<boolean> {
+  return (await addPaths(ws, tree, [path], opts)) > 0;
+}
+
+/** Добавить много путей одним сохранением (например, список из справки). Возвращает, сколько добавлено. */
+export async function addPaths(ws: Workspace, tree: string, paths: Step[][], opts: AddPathOptions): Promise<number> {
+  const store = baseStore(ws, tree);
+  await store.load();
+  const entries = [...store.get().data.entries];
+  const added: BaseEntry[] = [];
+  for (const path of paths) {
+    const entry = newEntry(entries, path, opts.source);
+    if (!entry) continue;
+    entries.push(entry);
+    added.push(entry);
+  }
+  if (!added.length) return 0;
+  store.update((d) => ({ entries: [...d.entries, ...added] }));
+  if (opts.share !== false) for (const e of added) addContribution(ws, { source: opts.source, dictionary: tree, label: chainText(e.path), entry: e.path });
+  return added.length;
 }
 
 /** Список имён древ, которые есть в рабочей папке. */

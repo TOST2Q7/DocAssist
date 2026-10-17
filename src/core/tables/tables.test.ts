@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import * as XLSX from 'xlsx';
-import { parseCsv, parseTsv, readTable, writeXlsx } from './tables';
+import { parseCsv, parseTsv, readTable, writeXlsx, writeXlsxBook } from './tables';
 
 describe('таблицы', () => {
   it('CSV с кавычками и «;»', () => {
@@ -44,5 +44,16 @@ describe('таблицы', () => {
     const bytes = writeXlsx(['Номер'], [['012345']]);
     const t = readTable(bytes, 'out.xlsx');
     expect(t.rows[0][0]).toBe('012345');
+  });
+
+  it('книга из нескольких листов: имена листов по правилам Excel', () => {
+    const data = writeXlsxBook([
+      { name: 'Бойцы', headers: ['ФИО'], rows: [['Иванов']] },
+      { name: 'Бойцы', headers: ['x'], rows: [] },
+      { name: 'Очень длинное имя листа: больше тридцати одного символа', headers: ['№'], rows: [['01']] },
+    ]);
+    const wb = XLSX.read(data, { type: 'array' });
+    expect(wb.SheetNames).toEqual(['Бойцы', 'Бойцы (2)', 'Очень длинное имя листа  больше']);
+    expect(readTable(data, 'a.xlsx', wb.SheetNames[2]).rows).toEqual([['01']]);
   });
 });

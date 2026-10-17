@@ -7,8 +7,8 @@ import type { Workspace } from '../workspace/workspace';
 
 /*
  * База людей — проверенные («актуальные») данные людей на общем языке полей (person.lastName, passport.series…).
- * Её заполняют приложения: «Проверка анкет» сохраняет готовые анкеты, «Генератор документов» дописывает то, чего
- * не хватило для документа (в том числе поля вне анкеты — место работы).
+ * Её заполняют приложения: «Проверка анкет» сохраняет готовые анкеты, «Личные дела» — ручной ввод всех полей,
+ * «Генератор документов» дописывает то, чего не хватило для документа (в том числе поля вне анкеты — место работы).
  * По ней работает кнопка «Проверить с актуальной информацией» и проверка уникальности («уже было» у другого человека).
  * Файл: .docassist/people.json. В «Предложения в базу» не попадает — это персональные данные.
  */
@@ -111,6 +111,16 @@ export function usePeople() {
       /** Дописать данные в запись человека (например, то, чего не хватило для документа). */
       complete(id: string, fields: Record<string, string>) {
         store?.update((d) => ({ records: completePerson(d.records, id, fields) }));
+      },
+      /**
+       * Сохранить запись с этим id (ручной ввод): запись с таким id заменяется, иначе добавляется
+       * (без id — с новым). Возвращает id записи. Пустые значения не сохраняются.
+       */
+      put(fields: Record<string, string>, source: string, id?: string): string {
+        const clean = Object.fromEntries(Object.entries(fields).filter(([, v]) => v.trim() !== ''));
+        const record: PersonRecord = { id: id ?? uid('p_'), fields: clean, savedAt: new Date().toISOString(), source };
+        store?.update((d) => ({ records: d.records.some((r) => r.id === record.id) ? d.records.map((r) => (r.id === record.id ? record : r)) : [...d.records, record] }));
+        return record.id;
       },
       remove(id: string) {
         store?.update((d) => ({ records: d.records.filter((r) => r.id !== id) }));

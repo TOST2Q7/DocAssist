@@ -1,5 +1,6 @@
 import { Loader2, Search, Trash2 } from 'lucide-react';
 import { Suspense, useMemo, useState } from 'react';
+import { Link } from 'react-router-dom';
 import { fioText, usePeople } from '@/core/people/people';
 import { APPS } from '@/core/registry/apps';
 import { fieldLabel } from '@/core/schema/fields';
@@ -27,7 +28,8 @@ function PeopleBase() {
       <p className="muted small" style={{ margin: 0 }}>
         Проверенные («актуальные») данные людей. По ним работает кнопка «Проверить с актуальной информацией» и проверка
         уникальности: значение, которое уже есть у другого человека, — ошибка. Пополняется из «Проверки анкет» (готовые анкеты) и
-        «Генератора документов» (то, чего не хватило для документа). Это персональные данные — в «Предложения в базу» они не попадают.
+        вручную в «Личных делах», а «Генератор документов» дописывает то, чего не хватило для документа. Это персональные данные — в
+        «Предложения в базу» они не попадают.
       </p>
       {people.records.length > 5 && (
         <div className="search-box">
@@ -61,6 +63,11 @@ function PeopleBase() {
                   <Trash2 size={18} />
                 </button>
               </div>
+              {open === r.id && (
+                <Link to={`/apps/lichnye-dela?p=${encodeURIComponent(r.id)}`} className="small">
+                  Открыть в «Личных делах» — изменить данные, личная папка, перевод
+                </Link>
+              )}
               {open === r.id && (
                 <table className="table small">
                   <tbody>

@@ -53,6 +53,18 @@ export interface DocResult<T> {
 
 const decoder = new TextDecoder();
 
+/** Имя, которого нет среди занятых (занятые — в нижнем регистре): «скан.jpg» → «скан (2).jpg». */
+export function uniqueFileName(name: string, takenLower: Set<string>): string {
+  const clean = name.replace(/[\\/:*?"<>|\u0000-\u001f]/g, '_').trim() || 'файл';
+  if (!takenLower.has(clean.toLowerCase())) return clean;
+  const dot = clean.lastIndexOf('.');
+  const [stem, ext] = dot > 0 ? [clean.slice(0, dot), clean.slice(dot)] : [clean, ''];
+  for (let i = 2; ; i++) {
+    const next = `${stem} (${i})${ext}`;
+    if (!takenLower.has(next.toLowerCase())) return next;
+  }
+}
+
 export class Workspace {
   readonly changes = new Emitter<ChangeEvent>();
   info: WorkspaceInfo | null = null;
@@ -92,6 +104,26 @@ export class Workspace {
 
   async writeBytes(path: string, data: Uint8Array | string): Promise<void> {
     await this.adapter.writeFile(path, data);
+    this.changes.emit({ path, action: 'write' });
+  }
+
+  /** Перенести файл (у хранилищ нет переименования: копируем и удаляем исходный). */
+  async moveFile(from: string, to: string): Promise<void> {
+    if (joinPath(from) === joinPath(to)) return;
+    const data = await this.adapter.readFile(from);
+    if (!data) throw new Error(`Файл не найден: ${from}`);
+    await this.writeBytes(to, data);
+    await this.remove(from);
+  }
+
+  /** Свободное имя в папке: «скан.jpg», «скан (2).jpg»… Символы, запрещённые в именах файлов, заменяются на «_». */
+  async freeName(folder: string, name: string, also: Iterable<string> = []): Promise<string> {
+    const taken = new Set([...(await this.adapter.list(folder)).map((e) => e.name), ...also].map((n) => n.toLowerCase()));
+    return uniqueFileName(name, taken);
+  }
+
+  async mkdir(path: string): Promise<void> {
+    await this.adapter.mkdir(path);
     this.changes.emit({ path, action: 'write' });
   }
 

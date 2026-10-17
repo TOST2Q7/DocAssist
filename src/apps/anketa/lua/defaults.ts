@@ -239,20 +239,34 @@ end
 base.check()
 `,
   'edu.specialty':
-    header('Направление обучения', '«00.00.00 Название специальности»; значение из базы') +
+    header('Направление обучения', '«00.00.00 Название специальности» (или «00000 Название» — код профессии); значение из базы — своё для каждого места учебы') +
     `
 if is_empty(true) then return end
 
-local code = lib.sub(value, 1, 8)
-local name = lib.sub(value, 10)
-if not lib.mask(code, "99.99.99") or lib.sub(value, 9, 9) ~= " " or not lib.is_capitalized(name) or lib.extra_spaces(value) then
-  problem("Нужно: код и название — «00.00.00 Название специальности»", { fix = lib.try_fix(value, function(v)
-    return lib.mask(lib.sub(v, 1, 8), "99.99.99") and lib.sub(v, 9, 9) == " " and lib.is_capitalized(lib.sub(v, 10))
-  end) })
+local professions = setting.toggle("Код профессии из 5 цифр («00000 Название»)", true)
+
+-- Код, пробел, название с заглавной буквы.
+local function coded(v, mask)
+  local n = lib.len(mask)
+  return lib.mask(lib.sub(v, 1, n), mask) and lib.sub(v, n + 1, n + 1) == " " and lib.is_capitalized(lib.sub(v, n + 2))
+end
+local function fits(v)
+  return not lib.extra_spaces(v) and (coded(v, "99.99.99") or (professions and coded(v, "99999")))
+end
+
+if not fits(value) then
+  problem("Нужно: код и название — «00.00.00 Название специальности»" .. (professions and " или «00000 Название профессии»" or ""), {
+    fix = lib.try_fix(value, fits),
+  })
   return
 end
 
-base.check()
+-- Список направлений у каждого учебного заведения свой (справка → приложения 1–5).
+if setting.toggle("Своё для каждого места учебы", true) then
+  base.check({ inside = "Место учебы" })
+else
+  base.check()
+end
 `,
   'edu.course':
     header('Курс', 'число от … до … (настраивается)') +

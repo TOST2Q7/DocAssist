@@ -16,12 +16,27 @@ export function mimeFor(fileName: string): string {
   switch (ext) {
     case 'xlsx':
       return 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
-    case 'docx':
-      return 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
     case 'csv':
       return 'text/csv;charset=utf-8';
     case 'json':
       return 'application/json';
+    case 'docx':
+      return 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
+    case 'zip':
+      return 'application/zip';
+    case 'pdf':
+      return 'application/pdf';
+    case 'jpg':
+    case 'jpeg':
+      return 'image/jpeg';
+    case 'png':
+      return 'image/png';
+    case 'webp':
+      return 'image/webp';
+    case 'gif':
+      return 'image/gif';
+    case 'heic':
+      return 'image/heic';
     default:
       return 'application/octet-stream';
   }

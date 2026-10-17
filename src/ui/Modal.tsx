@@ -8,9 +8,11 @@ interface Props {
   children: ReactNode;
   footer?: ReactNode;
   wide?: boolean;
+  /** Свой класс окна — например, для своей ширины. */
+  className?: string;
 }
 
-export function Modal({ title, onClose, children, footer, wide }: Props) {
+export function Modal({ title, onClose, children, footer, wide, className }: Props) {
   const titleId = useId();
   const ref = useRef<HTMLDivElement>(null);
 
@@ -31,7 +33,7 @@ export function Modal({ title, onClose, children, footer, wide }: Props) {
 
   return createPortal(
     <div className="modal-overlay" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
-      <div ref={ref} className={`modal ${wide ? 'modal--wide' : ''}`} role="dialog" aria-modal="true" aria-labelledby={titleId}>
+      <div ref={ref} className={`modal ${wide ? 'modal--wide' : ''} ${className ?? ''}`} role="dialog" aria-modal="true" aria-labelledby={titleId}>
         <div className="modal__head">
           <h2 id={titleId}>{title}</h2>
           <button className="icon-btn modal__close" onClick={onClose} aria-label="Закрыть">

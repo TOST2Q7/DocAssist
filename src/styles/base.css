@@ -6,6 +6,11 @@
 
 html {
   -webkit-text-size-adjust: 100%;
+  scrollbar-color: var(--border-strong) transparent;
+}
+::selection {
+  background: var(--brand-soft);
+  color: var(--text);
 }
 
 body {
@@ -24,30 +29,55 @@ h3,
 h4 {
   line-height: 1.25;
   margin: 0 0 0.5em;
+  font-weight: 700;
 }
+/* Заголовки страниц — дополнительным фирменным шрифтом, прописными, как в материалах РСО. */
 h1 {
-  font-size: 1.6rem;
+  font-family: var(--font-display);
+  font-size: 2.1rem;
+  font-weight: 600;
+  line-height: 1.05;
+  text-transform: uppercase;
+  letter-spacing: 0.005em;
+  text-wrap: balance;
 }
 h2 {
-  font-size: 1.25rem;
+  font-size: 1.3rem;
 }
 h3 {
-  font-size: 1.05rem;
+  font-size: 1.08rem;
 }
 p {
   margin: 0 0 0.75em;
 }
 a {
   color: var(--brand);
+  text-decoration-thickness: 1px;
+  text-underline-offset: 3px;
+  transition: text-decoration-thickness var(--dur-fast), color var(--dur-fast);
+}
+a:hover {
+  text-decoration-thickness: 2px;
 }
 code,
 kbd {
   font-family: var(--font-mono);
-  font-size: 0.9em;
+  font-size: 0.86em;
   background: var(--surface-2);
   border: 1px solid var(--border);
-  border-radius: 4px;
+  border-radius: var(--radius-s);
   padding: 0 4px;
+}
+/* Клавиша — как клавиша: с нижней гранью. */
+kbd {
+  display: inline-block;
+  min-width: 1.6em;
+  text-align: center;
+  line-height: 1.5;
+  background: var(--surface);
+  border-color: var(--border-strong);
+  border-bottom-width: 2px;
+  font-weight: 500;
 }
 
 :focus-visible {
@@ -62,6 +92,18 @@ textarea {
   font: inherit;
   color: inherit;
 }
+/* Данные (ФИО, паспорт, адреса) — системным шрифтом: в нём однозначнее О/0, З/3, латиница и кириллица. */
+input,
+select,
+textarea {
+  font-family: var(--font-data);
+}
+.num,
+input,
+.badge,
+.cnt {
+  font-variant-numeric: tabular-nums;
+}
 
 .visually-hidden {
   position: absolute !important;
@@ -72,9 +114,46 @@ textarea {
   white-space: nowrap;
 }
 
+/* Общие анимации. */
+@keyframes fade-in {
+  from {
+    opacity: 0;
+  }
+}
+@keyframes rise-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+}
+@keyframes slide-in-right {
+  from {
+    transform: translateX(100%);
+  }
+}
+@keyframes sheet-up {
+  from {
+    transform: translateY(100%);
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
-  * {
+  *,
+  *::before,
+  *::after {
     transition: none !important;
     animation: none !important;
   }
+  ::view-transition-group(*),
+  ::view-transition-old(*),
+  ::view-transition-new(*) {
+    animation: none !important;
+  }
+}
+
+/* Смена темы — круг от кнопки (ui/Header.tsx); без обычного «растворения» страниц. */
+::view-transition-old(root),
+::view-transition-new(root) {
+  animation: none;
+  mix-blend-mode: normal;
 }
