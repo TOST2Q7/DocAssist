@@ -1,4 +1,4 @@
-import { ClipboardCheck, Copy, Database, FolderOpen, Image as ImageIcon, Mail, Search } from 'lucide-react';
+import { ClipboardCheck, Copy, Database, FileText, FolderOpen, Image as ImageIcon, Mail, Search } from 'lucide-react';
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { markSeen } from '@/core/registry/badges';
@@ -248,6 +248,13 @@ function CandidateSection({ onOpen }: { onOpen: (f: Figure) => void }) {
           она не повреждена.
         </p>
         <Fig fig={FIG.cardGrid} onOpen={onOpen} />
+        <Alert kind="info">
+          Карточку можно заполнить в{' '}
+          <Link to="/apps/doc-generator">
+            <FileText size={14} style={{ verticalAlign: '-2px' }} /> «Генераторе документов»
+          </Link>
+          : данные возьмутся из базы людей, недостающее впишете там же, а шрифт, сетка и название файла будут как здесь.
+        </Alert>
       </Step>
 
       <Step n="6" title="Подготовить лист «Кандидаты» в журнале учета членов ЛСО, состоящих на учете в ХРО МООО «РСО» (Google таблица)">

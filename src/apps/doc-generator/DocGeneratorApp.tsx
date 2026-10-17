@@ -1,6 +1,7 @@
-import { FileText, Loader2 } from 'lucide-react';
+import { BookOpen, FileText, Loader2 } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
+import { MASTER_EMAIL } from '@/content/help/manual';
 import { usePeople } from '@/core/people/people';
 import { Alert } from '@/ui/Alert';
 import { CARD_FIELDS, cardValues } from './member-card/fields';
@@ -83,11 +84,17 @@ export default function DocGeneratorApp() {
               Файл называется «Фамилия И.О. - Учетная карточка члена организации» — имя ставится само. Методичка просит формат doc: если нужен
               именно он, откройте файл в Word → «Сохранить как» → «Документ Word 97–2003».
             </li>
-            <li>Место учёбы — сокращённое название из приложений методички (его можно выбрать из списка).</li>
+            <li>Место учёбы — сокращённое наименование, как в приложениях 1–5 (его можно выбрать из списка).</li>
             <li>Длинный адрес продолжается на следующей строке карточки — перенос после запятой, как в образце.</li>
             <li>Вы заполняете верхнюю часть. Членский билет, постановку на учёт, взносы и поощрения заполняет штаб — в образце там пусто.</li>
-            <li>Готовую карточку отправьте мастеру регионального отделения на почту из методички, в теме письма укажите название отряда.</li>
+            <li>
+              Готовую карточку отправьте мастеру ХРО МООО «РСО» на почту <a href={`mailto:${MASTER_EMAIL}`}>{MASTER_EMAIL}</a>, в теме письма
+              укажите название отряда.
+            </li>
           </ul>
+          <Link to="/help#candidate" className="btn btn--sm dg-rules__link">
+            <BookOpen size={14} /> Пособие и образец заполнения — в «Справке»
+          </Link>
         </details>
 
         {templateError && <Alert kind="error">Не удалось открыть бланк карточки: {templateError}</Alert>}

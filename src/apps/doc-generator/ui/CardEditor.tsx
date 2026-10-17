@@ -9,7 +9,7 @@ import { useToast } from '@/ui/Toast';
 import { APP_ID, CARDS_FOLDER } from '../constants';
 import { CARD_FIELDS, CARD_SECTIONS, cardFileName, cardValues, fullName, missingFields, type CardField, type CardValues } from '../member-card/fields';
 import { cellsFor, fillMemberCard, MAILING_MARKS, placeText, type Placed } from '../member-card/fill';
-import { INSTITUTIONS } from '../member-card/institutions';
+import { INSTITUTIONS } from '@/content/help/institutions';
 import type { CardTemplate } from '../member-card/template';
 import { useGeneratorSettings } from '../settings';
 import { CardPreview } from './CardPreview';
@@ -34,7 +34,6 @@ interface Props {
 }
 
 const clean = (s: string | undefined) => (s ?? '').replace(/\s+/g, ' ').trim();
-const CITIES = [...new Set(INSTITUTIONS.map((i) => i.city))];
 
 interface FieldProps {
   f: CardField;
@@ -94,11 +93,11 @@ function FieldBox({ f, value, base, placed, twoLines, onChange }: FieldProps) {
         )}
       </div>
       {f.id === 'edu.institution' && (
-        <select className="select dg-pick" value="" onChange={(e) => e.target.value && onChange(e.target.value)} aria-label="Выбрать учебное заведение из методички">
-          <option value="">Выбрать из методички…</option>
-          {CITIES.map((city) => (
-            <optgroup key={city} label={city}>
-              {INSTITUTIONS.filter((i) => i.city === city).map((i) => (
+        <select className="select dg-pick" value="" onChange={(e) => e.target.value && onChange(e.target.value)} aria-label="Выбрать учебное заведение из справки">
+          <option value="">Выбрать из справки…</option>
+          {INSTITUTIONS.map((c) => (
+            <optgroup key={c.city} label={c.city}>
+              {c.institutions.map((i) => (
                 <option key={i.short} value={i.short}>
                   {i.short}
                 </option>

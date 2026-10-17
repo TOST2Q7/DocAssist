@@ -1,14 +1,14 @@
+import { escapeXml, fromUtf8, unescapeXml, utf8 } from '@/core/docx/xml';
 import { readZip, writeZip, type ZipEntry } from '@/core/util/zip';
 
 /*
  * Заполнение бланка Word (.docx) без сторонних библиотек.
  * Бланк — таблица: в ячейки-«пустышки» рядом с подписями («ФИО», «Серия»…) вписывается текст.
  * Таблица, её сетка и оформление не меняются — меняется только содержимое нужных ячеек.
+ * (Бланки с метками {ФИО} заполняет core/docx/fill.ts.)
  */
 
 const DOCUMENT = 'word/document.xml';
-const enc = new TextEncoder();
-const dec = new TextDecoder();
 
 export interface Docx {
   entries: ZipEntry[];
@@ -20,11 +20,11 @@ export async function openDocx(bytes: Uint8Array): Promise<Docx> {
   const entries = await readZip(bytes);
   const doc = entries.find((e) => e.path === DOCUMENT);
   if (!doc) throw new Error('Это не документ Word (.docx): нет word/document.xml');
-  return { entries, xml: dec.decode(doc.data) };
+  return { entries, xml: fromUtf8(doc.data) };
 }
 
 export function saveDocx(doc: Docx): Uint8Array {
-  return writeZip(doc.entries.map((e) => (e.path === DOCUMENT ? { path: e.path, data: enc.encode(doc.xml) } : { path: e.path, data: e.data })));
+  return writeZip(doc.entries.map((e) => (e.path === DOCUMENT ? { path: e.path, data: utf8(doc.xml) } : { path: e.path, data: e.data })));
 }
 
 /** Шаблон, встроенный в приложение как data:-адрес, — в байты. */
@@ -32,7 +32,7 @@ export function dataUrlToBytes(url: string): Uint8Array {
   const comma = url.indexOf(',');
   const head = url.slice(0, comma);
   const body = url.slice(comma + 1);
-  if (!head.endsWith(';base64')) return enc.encode(decodeURIComponent(body));
+  if (!head.endsWith(';base64')) return utf8(decodeURIComponent(body));
   const bin = atob(body);
   const out = new Uint8Array(bin.length);
   for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
@@ -96,13 +96,6 @@ export function findElements(xml: string, tag: string, from = 0, to = xml.length
   }
   return out;
 }
-
-const unescapeXml = (s: string) =>
-  s.replace(/&(lt|gt|quot|apos|amp|#(\d+)|#x([0-9a-f]+));/gi, (_, name: string, dec: string, hex: string) => {
-    if (dec) return String.fromCodePoint(Number(dec));
-    if (hex) return String.fromCodePoint(parseInt(hex, 16));
-    return { lt: '<', gt: '>', quot: '"', apos: "'", amp: '&' }[name.toLowerCase()] ?? '';
-  });
 
 /** Видимый текст фрагмента: содержимое всех <w:t>. */
 export function textOf(xml: string): string {
@@ -178,10 +171,8 @@ export interface RunStyle {
 /** Times New Roman 12 — так требует методичка. */
 export const DEFAULT_STYLE: Required<RunStyle> = { font: 'Times New Roman', size: 12 };
 
-const escapeXml = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-
-/** Знаки, которых не может быть в XML, и переводы строк (в ячейке бланка — одна строка). */
-const cleanText = (s: string) => s.replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f￾￿]/g, '').replace(/[\r\n\t]+/g, ' ');
+/** В ячейке бланка — одна строка: переводы строк и табуляция становятся пробелами. */
+const oneLine = (s: string) => s.replace(/[\r\n\t]+/g, ' ');
 
 export function runXml(text: string, style: RunStyle = {}): string {
   const { font, size } = { ...DEFAULT_STYLE, ...style };
@@ -189,7 +180,7 @@ export function runXml(text: string, style: RunStyle = {}): string {
   const sz = Math.round(size * 2);
   return (
     `<w:r><w:rPr><w:rFonts w:ascii="${f}" w:hAnsi="${f}" w:cs="${f}" w:eastAsia="${f}"/><w:sz w:val="${sz}"/><w:szCs w:val="${sz}"/></w:rPr>` +
-    `<w:t xml:space="preserve">${escapeXml(cleanText(text))}</w:t></w:r>`
+    `<w:t xml:space="preserve">${escapeXml(oneLine(text))}</w:t></w:r>`
   );
 }
 

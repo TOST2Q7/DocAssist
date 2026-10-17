@@ -18,6 +18,9 @@
   cursor: pointer;
   font-weight: 600;
 }
+.dg-rules__link {
+  margin-top: 10px;
+}
 .dg-rules ul {
   margin: 10px 0 0;
   padding-left: 20px;
