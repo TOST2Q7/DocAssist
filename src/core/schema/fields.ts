@@ -71,6 +71,22 @@ export const PERSON_FIELDS: FieldDef[] = [
 
 export const FIELD_BY_ID = new Map(PERSON_FIELDS.map((f) => [f.id, f]));
 
+/**
+ * Поля вне формы анкеты: среди 35 столбцов их нет, но их дописывают в базу людей другие приложения
+ * («Генератор документов» — для учётной карточки). Идентификаторы — тоже постоянные.
+ */
+export const EXTRA_FIELDS: FieldDef[] = [
+  { id: 'work.place', label: 'Место работы', aliases: [], varKind: 'organization' },
+  { id: 'work.position', label: 'Должность на работе', aliases: [] },
+];
+
+const EXTRA_BY_ID = new Map(EXTRA_FIELDS.map((f) => [f.id, f]));
+
+/** Название поля базы людей — из анкеты или из полей вне анкеты. */
+export function fieldLabel(id: string): string {
+  return (FIELD_BY_ID.get(id) ?? EXTRA_BY_ID.get(id))?.label ?? id;
+}
+
 export function normalizeHeader(h: string): string {
   return h
     .toLowerCase()

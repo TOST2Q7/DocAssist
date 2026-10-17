@@ -1,0 +1,238 @@
+.dg__head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-bottom: 20px;
+}
+.dg__head h1 {
+  margin: 0;
+}
+
+.dg-doc {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.dg-rules summary {
+  cursor: pointer;
+  font-weight: 600;
+}
+.dg-rules ul {
+  margin: 10px 0 0;
+  padding-left: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.dg-search {
+  position: relative;
+  flex: 1 1 240px;
+  display: flex;
+  align-items: center;
+}
+.dg-search > svg {
+  position: absolute;
+  left: 10px;
+}
+.dg-search .input {
+  padding-left: 32px;
+}
+
+/* ---------- Карточка человека ---------- */
+.dg-bar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.dg-bar__main {
+  flex: 1 1 220px;
+  min-width: 0;
+}
+.dg-bar__main h2 {
+  margin: 0;
+}
+.dg-jump {
+  color: var(--brand);
+  text-decoration: underline;
+  font-weight: 600;
+}
+
+.dg-layout {
+  display: grid;
+  gap: var(--gap);
+  align-items: start;
+}
+@media (min-width: 1100px) {
+  .dg-layout {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 560px);
+  }
+  .dg-side {
+    position: sticky;
+    top: calc(var(--header-h) + 12px);
+  }
+}
+
+.dg-fields {
+  display: grid;
+  gap: 14px;
+}
+.dg-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding-left: 10px;
+  border-left: 3px solid transparent;
+}
+.dg-field--missing {
+  border-left-color: var(--warning);
+}
+.dg-field--missing .input {
+  border-color: var(--warning);
+  background: var(--warning-soft);
+}
+.dg-field--new {
+  border-left-color: var(--info);
+}
+.dg-field__head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.dg-field__label {
+  font-weight: 600;
+}
+.dg-pick {
+  max-width: 420px;
+}
+.dg-base {
+  color: var(--text-muted);
+}
+.dg-issue {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  flex-wrap: wrap;
+  color: var(--warning);
+}
+.dg-issue--note {
+  color: var(--text-muted);
+}
+.dg-issue > svg {
+  flex: none;
+  margin-top: 2px;
+}
+.dg-issue > span {
+  flex: 1 1 200px;
+  min-width: 0;
+}
+.dg-lines {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.dg-lines__line {
+  font-family: 'Times New Roman', Times, serif;
+  border-bottom: 1px solid var(--border-strong);
+  padding: 0 2px;
+}
+.dg-change del {
+  color: var(--text-faint);
+}
+.dg-change ins {
+  text-decoration: none;
+  color: var(--success);
+  font-weight: 600;
+}
+
+/* ---------- Предпросмотр бланка: как лист бумаги, в любой теме ---------- */
+.dg-paper-wrap {
+  overflow-x: auto;
+  border-radius: var(--radius-s);
+}
+/* Ширина листа задаёт кегль: в строку бланка (9951 twips) входит 41,5 кегля Times New Roman 12. */
+.dg-paper {
+  container-type: inline-size;
+  min-width: 480px;
+  background: #fff;
+  color: #000;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-s);
+  box-shadow: var(--shadow);
+}
+.dg-paper__body {
+  padding: 3cqw 4cqw;
+  font-family: 'Times New Roman', Times, serif;
+  font-size: 0.8rem;
+  font-size: calc(92cqw / 41.5);
+  line-height: 1.3;
+  display: flex;
+  flex-direction: column;
+  gap: 0.15em;
+}
+.dg-paper__org {
+  text-align: center;
+  font-weight: 700;
+}
+.dg-paper__title {
+  text-align: center;
+  font-weight: 700;
+  margin: 0.6em 0 0.3em;
+}
+.dg-paper__rest {
+  margin-top: 0.8em;
+  color: #6b6b6b;
+  font-family: var(--font);
+  font-size: 0.85em;
+}
+.dg-prow {
+  display: flex;
+  align-items: flex-end;
+  min-height: 1.3em;
+}
+.dg-prow--end {
+  justify-content: center;
+}
+.dg-pl {
+  flex: 0 0 auto;
+  padding-right: 0.3em;
+  white-space: nowrap;
+  overflow: hidden;
+}
+.dg-pv {
+  flex: 0 1 7em;
+  min-width: 0;
+  min-height: 1.3em;
+  border: 0;
+  border-bottom: 1px solid #000;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  line-height: inherit;
+  text-align: center;
+  padding: 0 0.15em;
+  cursor: pointer;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.dg-pv--grow {
+  flex: 1 1 8em;
+  text-align: left;
+}
+.dg-pv:hover {
+  background: #eef3fc;
+}
+.dg-pv--missing {
+  background: #fff1d6;
+  border-bottom: 1px dashed #a35f00;
+}
+.dg-pv--over {
+  background: #fde8e8;
+}
+.dg-mark {
+  font-family: 'Segoe UI Symbol', 'Noto Sans Symbols 2', 'DejaVu Sans', sans-serif;
+}

@@ -16,6 +16,8 @@ export function mimeFor(fileName: string): string {
   switch (ext) {
     case 'xlsx':
       return 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
+    case 'docx':
+      return 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
     case 'csv':
       return 'text/csv;charset=utf-8';
     case 'json':

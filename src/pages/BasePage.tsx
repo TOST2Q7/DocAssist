@@ -2,7 +2,7 @@ import { Loader2, Search, Trash2 } from 'lucide-react';
 import { Suspense, useMemo, useState } from 'react';
 import { fioText, usePeople } from '@/core/people/people';
 import { APPS } from '@/core/registry/apps';
-import { FIELD_BY_ID } from '@/core/schema/fields';
+import { fieldLabel } from '@/core/schema/fields';
 import { formatDateTime } from '@/core/util/format';
 import { ABBR_GROUPS, ABBREVIATIONS } from '@/shared/cell/abbr';
 import { useToast } from '@/ui/Toast';
@@ -27,7 +27,7 @@ function PeopleBase() {
       <p className="muted small" style={{ margin: 0 }}>
         Проверенные («актуальные») данные людей. По ним работает кнопка «Проверить с актуальной информацией» и проверка
         уникальности: значение, которое уже есть у другого человека, — ошибка. Пополняется из «Проверки анкет» (готовые анкеты) и
-        будущим приложением ручного ввода. Это персональные данные — в «Предложения в базу» они не попадают.
+        «Генератора документов» (то, чего не хватило для документа). Это персональные данные — в «Предложения в базу» они не попадают.
       </p>
       {people.records.length > 5 && (
         <div className="search-box">
@@ -66,7 +66,7 @@ function PeopleBase() {
                   <tbody>
                     {Object.entries(r.fields).map(([id, v]) => (
                       <tr key={id}>
-                        <td className="muted">{FIELD_BY_ID.get(id)?.label ?? id}</td>
+                        <td className="muted">{fieldLabel(id)}</td>
                         <td>{v}</td>
                       </tr>
                     ))}
