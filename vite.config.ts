@@ -43,6 +43,18 @@ export default defineConfig(({ mode }) => {
         ...(single ? { 'virtual:pwa-register/react': fileURLToPath(new URL('./src/ui/pwaStub.ts', import.meta.url)) } : {}),
       },
     },
+    optimizeDeps: {
+      esbuildOptions: {
+        // Только для dev-сервера (предсборка зависимостей). Lua (fengari) без проверки читает process.env.FENGARICONF,
+        // а здесь Vite подставляет лишь process.env.NODE_ENV — в браузере «process is not defined». В сборке Vite сам
+        // заменяет process.env на {}. Глобальный process подставлять нельзя: по нему fengari решает, что работает под Node.
+        // Этот define заменяет Vite-овский целиком, поэтому NODE_ENV — как у Vite.
+        define: {
+          'process.env.NODE_ENV': JSON.stringify(process.env.NODE_ENV || mode),
+          'process.env.FENGARICONF': 'undefined',
+        },
+      },
+    },
     publicDir: single ? false : 'public',
     build: single ? { outDir: 'dist-single', chunkSizeWarningLimit: 2000 } : { chunkSizeWarningLimit: 1000 },
     plugins: single
