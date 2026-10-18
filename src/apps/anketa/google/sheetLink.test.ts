@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { TableData } from '@/core/tables/tables';
 import { remapSession, type AnketaSession } from '../model/session';
-import { mapRows, planWrite, rowKey } from './sheetLink';
+import { isSnapshotPath, mapRows, planWrite, rowKey } from './sheetLink';
 
 const columns = ['person.lastName', 'person.firstName', 'person.middleName', 'person.birthDate', 'contact.phone'];
 const headers = ['Фамилия', 'Имя', 'Отчество', 'Дата рождения', 'Телефон'];
@@ -68,5 +68,14 @@ describe('обновление из Google: пометки остаются у �
   it('ключ строки — ФИО и дата рождения, регистр и «ё» не важны', () => {
     expect(rowKey(['Пётр', 'Иван', '', '', ''], columns)).toBe(rowKey(['петр ', 'ИВАН', '', '', ''], columns));
     expect(rowKey(['', '', '', '', '8900'], columns)).toBeNull();
+  });
+});
+
+describe('пути снимков', () => {
+  it('только в папке «Google Таблицы»', () => {
+    expect(isSnapshotPath('Проверка анкет/Google Таблицы/Анкеты — Лист1.xlsx')).toBe(true);
+    expect(isSnapshotPath('Проверка анкет/Google Таблицы/../checks.json')).toBe(false);
+    expect(isSnapshotPath('.docassist/people.json')).toBe(false);
+    expect(isSnapshotPath('Проверка анкет/Google Таблицы/a/b.xlsx')).toBe(false);
   });
 });

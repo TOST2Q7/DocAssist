@@ -20,7 +20,17 @@ export interface SecurityCheck {
 }
 
 /** Откуда приложению можно загружать скрипты и окна: свой адрес и Google (вход, окно выбора). */
-const TRUSTED = [/^https:\/\/accounts\.google\.com$/, /^https:\/\/apis\.google\.com$/, /^https:\/\/[a-z0-9-]+\.gstatic\.com$/, /^https:\/\/[a-z0-9-]+\.google\.com$/, /^https:\/\/[a-z0-9-]+\.googleapis\.com$/, /^https:\/\/[a-z0-9-]+\.googleusercontent\.com$/];
+const TRUSTED = new Set([
+  'https://accounts.google.com',
+  'https://apis.google.com',
+  'https://docs.google.com',
+  'https://drive.google.com',
+  'https://www.gstatic.com',
+  'https://ssl.gstatic.com',
+  'https://fonts.gstatic.com',
+  'https://www.googleapis.com',
+  'https://sheets.googleapis.com',
+]);
 
 const violations: { what: string; where: string }[] = [];
 const foreign = new Set<string>();
@@ -38,7 +48,7 @@ function originOf(url: string): string {
 function trusted(url: string): boolean {
   if (!url || url.startsWith('data:') || url.startsWith('blob:')) return true;
   const o = originOf(url);
-  return o === location.origin || o === 'null' || TRUSTED.some((r) => r.test(o));
+  return o === location.origin || TRUSTED.has(o);
 }
 
 function scanElement(el: Element) {

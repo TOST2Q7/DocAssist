@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { getMany, parseBatch, uploadFile } from './drive';
 import { errorFromResponse, GoogleError, isRetryable } from './errors';
-import { backoffDelay, connectAuth, gfetch, runQueue, setSleepForTests } from './http';
+import { backoffDelay, connectAuth, gfetch, runQueue, setSleepForTests, tokenAllowed } from './http';
 import { md5 } from './md5';
 import { a1, columnLetters } from './sheets';
 
@@ -58,41 +58,51 @@ describe('gfetch', () => {
   });
   afterEach(() => vi.unstubAllGlobals());
 
+  it('пропуск входа уходит только в API Google', async () => {
+    expect(tokenAllowed('https://www.googleapis.com/drive/v3/files')).toBe(true);
+    expect(tokenAllowed('https://sheets.googleapis.com/v4/spreadsheets/x')).toBe(true);
+    expect(tokenAllowed('http://www.googleapis.com/drive/v3/files')).toBe(false);
+    expect(tokenAllowed('https://www.googleapis.com.evil.test/')).toBe(false);
+    expect(tokenAllowed('https://script.google.com/macros/s/x/exec')).toBe(false);
+    await expect(gfetch('https://evil.test/steal')).rejects.toMatchObject({ kind: 'other' });
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
   it('подставляет токен и повторяет при перегрузке', async () => {
     fetchMock.mockResolvedValueOnce(json(429, {})).mockResolvedValueOnce(json(403, { error: { errors: [{ reason: 'rateLimitExceeded' }] } })).mockResolvedValueOnce(json(200, { ok: 1 }));
-    await expect(gfetch('https://x.test/a')).resolves.toEqual({ ok: 1 });
+    await expect(gfetch('https://www.googleapis.com/a')).resolves.toEqual({ ok: 1 });
     expect(fetchMock).toHaveBeenCalledTimes(3);
     expect(fetchMock.mock.calls[0][1].headers.Authorization).toBe('Bearer tok');
   });
 
   it('не повторяет бесконечно', async () => {
     fetchMock.mockImplementation(async () => json(429, {}));
-    await expect(gfetch('https://x.test/a', { retries: 2 })).rejects.toMatchObject({ kind: 'rateLimit' });
+    await expect(gfetch('https://www.googleapis.com/a', { retries: 2 })).rejects.toMatchObject({ kind: 'rateLimit' });
     expect(fetchMock).toHaveBeenCalledTimes(3);
   });
 
   it('404 и нет прав — сразу ошибка, без повтора', async () => {
     fetchMock.mockResolvedValueOnce(json(404, {}));
-    await expect(gfetch('https://x.test/a')).rejects.toMatchObject({ kind: 'notFound' });
+    await expect(gfetch('https://www.googleapis.com/a')).rejects.toMatchObject({ kind: 'notFound' });
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
   it('401 — сообщает модулю входа и не повторяет', async () => {
     fetchMock.mockResolvedValueOnce(json(401, {}));
-    await expect(gfetch('https://x.test/a')).rejects.toMatchObject({ kind: 'auth' });
+    await expect(gfetch('https://www.googleapis.com/a')).rejects.toMatchObject({ kind: 'auth' });
     expect(unauthorized).toHaveBeenCalledOnce();
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
   it('обрыв связи — не больше трёх повторов', async () => {
     fetchMock.mockRejectedValue(new TypeError('Failed to fetch'));
-    await expect(gfetch('https://x.test/a')).rejects.toMatchObject({ kind: 'network' });
+    await expect(gfetch('https://www.googleapis.com/a')).rejects.toMatchObject({ kind: 'network' });
     expect(fetchMock).toHaveBeenCalledTimes(4);
   });
 
   it('без входа — понятная ошибка, запроса нет', async () => {
     connectAuth(() => null, unauthorized);
-    await expect(gfetch('https://x.test/a')).rejects.toMatchObject({ kind: 'auth' });
+    await expect(gfetch('https://www.googleapis.com/a')).rejects.toMatchObject({ kind: 'auth' });
     expect(fetchMock).not.toHaveBeenCalled();
   });
 });

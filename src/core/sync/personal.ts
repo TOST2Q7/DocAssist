@@ -159,7 +159,8 @@ async function pathsOf(ws: Workspace, groups: Group[], remote: SyncPayload | nul
     g.files.forEach((f) => out.add(f));
     if (g.folder) {
       for (const e of await ws.list(g.folder).catch(() => [])) if (e.kind === 'file' && e.name.endsWith('.json')) out.add(e.path);
-      for (const p of Object.keys(remote?.items ?? {})) if (p.startsWith(`${g.folder}/`)) out.add(p);
+      // Пути из файла на Диске — только «папка группы/имя.json», без вложенных папок и «..».
+      for (const p of Object.keys(remote?.items ?? {})) if (p.startsWith(`${g.folder}/`) && /^[^/\\.][^/\\]*\.json$/.test(p.slice(g.folder.length + 1))) out.add(p);
     }
   }
   return [...out];

@@ -21,6 +21,11 @@ export interface SpreadsheetInfo {
   sheets: SheetInfo[];
 }
 
+/** Ссылка на таблицу: только адрес Google Таблиц (ссылку из файла или ответа не берём как есть). */
+export function spreadsheetUrl(id: string, url?: string): string {
+  return url && /^https:\/\/docs\.google\.com\/spreadsheets\//.test(url) ? url : `https://docs.google.com/spreadsheets/d/${encodeURIComponent(id)}/edit`;
+}
+
 export async function getSpreadsheet(id: string): Promise<SpreadsheetInfo> {
   const r = await gfetch<{
     spreadsheetId: string;
@@ -31,7 +36,7 @@ export async function getSpreadsheet(id: string): Promise<SpreadsheetInfo> {
   return {
     spreadsheetId: r.spreadsheetId,
     title: r.properties?.title ?? 'Таблица',
-    url: r.spreadsheetUrl ?? `https://docs.google.com/spreadsheets/d/${id}/edit`,
+    url: spreadsheetUrl(id, r.spreadsheetUrl),
     sheets: (r.sheets ?? []).map((s) => ({ sheetId: s.properties?.sheetId ?? 0, title: s.properties?.title ?? '', index: s.properties?.index ?? 0 })),
   };
 }

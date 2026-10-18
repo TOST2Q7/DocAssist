@@ -45,11 +45,18 @@ export function linksStore(ws: Workspace) {
   return getDocStore(ws, GOOGLE_LINKS, linksDocType);
 }
 
+/** Снимок может лежать только в папке «Google Таблицы» (файл связей мог прийти с другого устройства). */
+export function isSnapshotPath(path: string): boolean {
+  return path.startsWith(`${GOOGLE_FOLDER}/`) && !path.slice(GOOGLE_FOLDER.length + 1).includes('/') && path.endsWith('.xlsx');
+}
+
 export function useSheetLinks() {
   const { workspace } = useWorkspace();
   const store = useMemo(() => (workspace ? linksStore(workspace) : null), [workspace]);
   const state = useDocStore(store);
-  return { store, links: state?.data.links ?? {}, loaded: !!state?.loaded };
+  const raw = state?.data.links;
+  const links = useMemo(() => Object.fromEntries(Object.entries(raw ?? {}).filter(([p]) => isSnapshotPath(p))), [raw]);
+  return { store, links, loaded: !!state?.loaded };
 }
 
 const safe = (s: string) => s.replace(/[\\/:*?"<>|\u0000-\u001f]/g, '_').replace(/\s+/g, ' ').trim().slice(0, 80) || 'Таблица';

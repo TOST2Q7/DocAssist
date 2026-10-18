@@ -113,7 +113,7 @@ export function GoogleSheetBar({ path, table, columns, names, s }: { path: strin
         Google Таблица «{link.title}», лист «{link.sheetTitle}». Прочитана: {formatStamp(link.readAt)}
         {link.lastWrite ? ` · записано: ${formatStamp(link.lastWrite)}` : ''}
       </span>
-      <a className="btn btn--sm btn--ghost" href={link.url} target="_blank" rel="noreferrer">
+      <a className="btn btn--sm btn--ghost" href={sheets.spreadsheetUrl(link.spreadsheetId, link.url)} target="_blank" rel="noreferrer">
         <ExternalLink size={14} /> Открыть
       </a>
       <button className="btn btn--sm" disabled={!!busy || s.readOnly} onClick={() => void run('refresh', refresh)} data-tip="Прочитать таблицу заново; правки и пометки останутся у тех же людей">

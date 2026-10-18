@@ -63,9 +63,22 @@ async function readBody(res: Response): Promise<unknown> {
   }
 }
 
+/** Куда можно отправлять пропуск входа: только API Google. Защита от утечки токена по ошибке в коде. */
+const TOKEN_HOSTS = new Set(['www.googleapis.com', 'sheets.googleapis.com']);
+
+export function tokenAllowed(url: string): boolean {
+  try {
+    const u = new URL(url);
+    return u.protocol === 'https:' && TOKEN_HOSTS.has(u.hostname);
+  } catch {
+    return false;
+  }
+}
+
 export async function gfetch<T = unknown>(url: string, opts: RequestOptions = {}): Promise<T> {
   const retries = opts.retries ?? 5;
   const full = withQuery(url, opts.query);
+  if (!opts.anonymous && !tokenAllowed(full)) throw new GoogleError('other', 'Запрос не к Google — пропуск входа не отправляется.');
   for (let attempt = 0; ; attempt++) {
     const headers: Record<string, string> = { ...(opts.headers ?? {}) };
     if (!opts.anonymous) {

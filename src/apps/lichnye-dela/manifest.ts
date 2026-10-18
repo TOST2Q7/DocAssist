@@ -16,7 +16,7 @@ const manifest: AppManifest = {
   folder: APP_FOLDER,
   settingsFiles: [TEMPLATES_FILE],
   syncGroups: [
-    { id: 'lichnye-dela-drive', title: 'Личные дела: связь с Google Диском', hint: 'Древо папок, правила оформления, какие файлы где лежат.', files: [DRIVE_FILE], default: true },
+    { id: 'lichnye-dela-drive', title: 'Личные дела: связь с Google Диском', hint: 'Древо папок, правила оформления, какие файлы где лежат (в названиях — ФИО бойцов).', files: [DRIVE_FILE], personal: true },
     { id: 'lichnye-dela-cases', title: 'Личные дела: сведения', hint: 'Достижения, характеристики, подписи сканов (без самих файлов).', files: [CASES_FILE], personal: true },
   ],
   requiresWorkspace: true,

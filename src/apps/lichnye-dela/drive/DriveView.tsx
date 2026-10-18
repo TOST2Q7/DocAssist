@@ -242,7 +242,7 @@ export function DriveView({ cases }: { cases: CasesApi }) {
                 onClick: () => confirm(`Убрать «${node.name}»${kids.length ? ' и всё внутри' : ''} из древа приложения? На Google Диске ничего не удалится.`) && unlinkNode(store!, node),
                 disabled: readOnly,
               },
-              ...(isRoot
+              ...(isRoot || !node.created
                 ? []
                 : [
                     {

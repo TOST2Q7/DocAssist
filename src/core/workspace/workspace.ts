@@ -55,7 +55,7 @@ const decoder = new TextDecoder();
 
 /** Имя, которого нет среди занятых (занятые — в нижнем регистре): «скан.jpg» → «скан (2).jpg». */
 export function uniqueFileName(name: string, takenLower: Set<string>): string {
-  const clean = name.replace(/[\\/:*?"<>|\u0000-\u001f]/g, '_').trim() || 'файл';
+  const clean = name.replace(/[\\/:*?"<>|\u0000-\u001f]/g, '_').trim().replace(/^\.+$/, '') || 'файл';
   if (!takenLower.has(clean.toLowerCase())) return clean;
   const dot = clean.lastIndexOf('.');
   const [stem, ext] = dot > 0 ? [clean.slice(0, dot), clean.slice(dot)] : [clean, ''];

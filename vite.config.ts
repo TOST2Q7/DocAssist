@@ -29,7 +29,9 @@ function inlineFavicon(): Plugin {
  * Встроенный скрипт темы разрешается по отпечатку. В версии-файле не используется: там весь код встроенный.
  */
 function contentSecurityPolicy(): Plugin {
-  const G = 'https://*.google.com https://*.googleapis.com https://*.gstatic.com';
+  // Только конкретные адреса Google, без «*.google.com»: на доменах Google есть сервисы, которые может завести кто угодно
+  // (Apps Script, Firebase), — через них внедрённый код мог бы унести данные.
+  const GOOGLE_STATIC = 'https://www.gstatic.com https://ssl.gstatic.com';
   return {
     name: 'docassist-csp',
     apply: 'build',
@@ -39,12 +41,12 @@ function contentSecurityPolicy(): Plugin {
         const hashes = [...html.matchAll(/<script>([\s\S]*?)<\/script>/g)].map((m) => `'sha256-${createHash('sha256').update(m[1]).digest('base64')}'`);
         const policy = [
           "default-src 'self'",
-          `script-src 'self' ${hashes.join(' ')} https://accounts.google.com https://apis.google.com https://*.gstatic.com`,
-          `style-src 'self' 'unsafe-inline' https://accounts.google.com https://*.gstatic.com`,
-          `img-src 'self' data: blob: ${G} https://*.googleusercontent.com`,
+          `script-src 'self' ${hashes.join(' ')} https://accounts.google.com https://apis.google.com ${GOOGLE_STATIC}`,
+          `style-src 'self' 'unsafe-inline' https://accounts.google.com ${GOOGLE_STATIC}`,
+          `img-src 'self' data: blob: ${GOOGLE_STATIC}`,
           "font-src 'self' data: https://fonts.gstatic.com",
-          `connect-src 'self' https://*.googleapis.com https://accounts.google.com https://api.github.com https://raw.githubusercontent.com`,
-          `frame-src ${G} https://*.googleusercontent.com`,
+          "connect-src 'self' https://www.googleapis.com https://sheets.googleapis.com https://accounts.google.com https://api.github.com https://raw.githubusercontent.com",
+          'frame-src https://accounts.google.com https://docs.google.com https://drive.google.com',
           "worker-src 'self' blob:",
           "manifest-src 'self'",
           "object-src 'none'",

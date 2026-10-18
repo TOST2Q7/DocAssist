@@ -57,8 +57,8 @@ export const FOLDER_COLORS: { rgb: string; title: string }[] = [
   { rgb: '#f691b2', title: 'Розовый' },
 ];
 
-export const folderUrl = (id: string) => `https://drive.google.com/drive/folders/${id}`;
-export const fileUrl = (id: string) => `https://drive.google.com/file/d/${id}/view`;
+export const folderUrl = (id: string) => `https://drive.google.com/drive/folders/${encodeURIComponent(id)}`;
+export const fileUrl = (id: string) => `https://drive.google.com/file/d/${encodeURIComponent(id)}/view`;
 
 const q = (s: string) => `'${s.replace(/\\/g, '\\\\').replace(/'/g, "\\'")}'`;
 

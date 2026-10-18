@@ -1,6 +1,7 @@
 import { LogIn, LogOut, Loader2, UserRound } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { AVAILABILITY_TEXT, errorText, googleAvailability, rememberedEmail, signIn, signOut, useGoogleAuth } from '@/core/google';
+import { forgetHere, hasRememberedKey } from '@/core/sync/personal';
 import { Alert } from './Alert';
 import { useToast } from './Toast';
 
@@ -50,7 +51,18 @@ export function GoogleBar({ hint }: { hint?: string }) {
       <span className="spacer small">
         Google: <strong>{auth.email ?? 'вход выполнен'}</strong>
       </span>
-      <button className="btn btn--ghost btn--sm" onClick={() => void signOut(false)} data-tip="Выйти из Google в этом окне">
+      <button
+        className="btn btn--ghost btn--sm"
+        onClick={async () => {
+          await signOut(false);
+          // Запомненная фраза остаётся в браузере — на чужом или общем компьютере её лучше забыть.
+          if ((await hasRememberedKey()) && confirm('Вы вышли из Google. Забыть и контрольную фразу личных настроек на этом устройстве?\n\nЕсли это ваш личный компьютер — можно оставить.')) {
+            await forgetHere();
+            toast('Фраза забыта на этом устройстве.');
+          }
+        }}
+        data-tip="Выйти из Google в этом окне"
+      >
         <LogOut size={14} /> Выйти
       </button>
     </div>
