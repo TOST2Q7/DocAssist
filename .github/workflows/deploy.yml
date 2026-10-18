@@ -2,7 +2,7 @@ name: Тесты и публикация
 
 on:
   push:
-    branches: [testing, tests, main]
+    branches: [testing, main]
   pull_request:
   workflow_dispatch:
 
@@ -31,12 +31,12 @@ jobs:
         env:
           BASE_PATH: /${{ github.event.repository.name }}/
       - uses: actions/upload-pages-artifact@v3
-        if: github.event_name != 'pull_request' && github.ref == 'refs/heads/tests'
+        if: github.event_name != 'pull_request' && github.ref == 'refs/heads/testing'
         with:
           path: dist
 
   deploy:
-    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/tests'
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/testing'
     needs: build
     runs-on: ubuntu-latest
     environment:
