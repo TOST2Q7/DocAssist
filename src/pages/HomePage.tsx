@@ -132,7 +132,7 @@ const STEPS: { title: string; text: string; to?: string; app?: boolean }[] = [
 ];
 
 const FACTS: { icon: LucideIcon; title: string; text: string }[] = [
-  { icon: ShieldCheck, title: 'Данные остаются у вас', text: 'Паспорта и СНИЛС бойцов никуда не отправляются.' },
+  { icon: ShieldCheck, title: 'Данные остаются у вас', text: 'Паспорта и СНИЛС бойцов — у вас на устройстве. В Google — только если вы сами подключите свой Диск.' },
   { icon: WifiOff, title: 'Работает без интернета', text: 'На объекте, в дороге, на сезоне — после первого открытия.' },
   { icon: Variable, title: 'Вводите один раз', text: 'Название отряда, адреса, телефоны — Ctrl+Пробел в любом поле.' },
   { icon: CheckCheck, title: 'База растёт сама', text: 'Подтверждённые значения дальше проходят проверку без вас.' },

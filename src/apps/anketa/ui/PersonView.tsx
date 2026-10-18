@@ -34,6 +34,9 @@ interface Props {
   onToggleReviewed: () => void;
   /** Игнорировать замечание в ячейке. */
   onIgnore: (col: number, text: string, on: boolean) => void;
+  /** Пометки к ячейкам этой анкеты (столбец → текст) — только в приложении. */
+  notes?: Record<string, string>;
+  onNote?: (col: number, text: string) => void;
   /** Проигнорированы все замечания анкеты. */
   rowIgnored: boolean;
   onIgnoreRow: (on: boolean) => void;
@@ -55,7 +58,7 @@ export function personFields(values: string[], columns: (string | null)[]): Reco
   return out;
 }
 
-export function PersonView({ model, headers, originals, row, reviewed, readOnly, fileLabel, onSelect, onChangeCell, onApply, onConfirm, onConfirmMany, onToggleReviewed, onIgnore, rowIgnored, onIgnoreRow, tableIgnored }: Props) {
+export function PersonView({ model, headers, originals, row, reviewed, readOnly, fileLabel, onSelect, onChangeCell, onApply, onConfirm, onConfirmMany, onToggleReviewed, onIgnore, rowIgnored, onIgnoreRow, tableIgnored, notes, onNote }: Props) {
   const result = model.results[row];
   const values = model.values[row];
   const name = model.names[row] || `Строка ${row + 1}`;
@@ -180,6 +183,8 @@ export function PersonView({ model, headers, originals, row, reviewed, readOnly,
                 onConfirmPerson={(on) => onConfirm(f.col, on ? (values[f.col] ?? '') : null)}
                 onConfirmBase={() => void confirmField(f)}
                 onIgnore={(text, on) => onIgnore(f.col, text, on)}
+                note={notes?.[f.col]}
+                onNote={onNote && ((text) => onNote(f.col, text))}
                 onCopy={() => navigator.clipboard?.writeText(values[f.col] ?? '').then(() => toast('Скопировано'))}
                 onSaveVar={() =>
                   setSaveVar({

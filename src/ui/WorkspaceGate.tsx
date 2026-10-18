@@ -52,7 +52,7 @@ export function WorkspaceChooser({ compact = false }: { compact?: boolean }) {
       {!compact && (
         <div className="page-head">
           <h2>Выберите рабочую папку</h2>
-          <p>Все файлы и настройки хранятся в ней — на вашем устройстве. В интернет ничего не отправляется.</p>
+          <p>Все файлы и настройки хранятся в ней — на вашем устройстве. В интернет ничего не отправляется, пока вы сами не подключите свой Google Диск.</p>
         </div>
       )}
       {status.state === 'error' && <Alert kind="error">Не удалось открыть рабочую папку: {status.message}</Alert>}

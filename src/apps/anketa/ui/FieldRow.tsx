@@ -1,4 +1,5 @@
-import { BookCheck, Check, CircleAlert, Copy, Database, Eye, EyeOff, Info, RotateCcw, Star, Wand2, XCircle } from 'lucide-react';
+import { BookCheck, Check, CircleAlert, Copy, Database, Eye, EyeOff, Info, RotateCcw, StickyNote, Star, Wand2, XCircle } from 'lucide-react';
+import { useState } from 'react';
 import { normalizeHeader, type FieldDef } from '@/core/schema/fields';
 import { Menu } from '@/ui/Menu';
 import type { FieldResult, FieldStatus, Issue } from '../model/types';
@@ -22,6 +23,9 @@ interface Props {
   onCopy: () => void;
   /** Игнорировать замечание (или вернуть). */
   onIgnore: (text: string, on: boolean) => void;
+  /** Пометка к ячейке — только в приложении, в таблицу не пишется. */
+  note?: string;
+  onNote?: (text: string) => void;
 }
 
 const STATUS_LABEL: Record<FieldStatus, string> = {
@@ -45,7 +49,8 @@ function StatusIcon({ status }: { status: FieldStatus }) {
   return <CircleAlert size={18} className="ic ic--confirm" aria-label={label} />;
 }
 
-export function FieldRow({ num, field, def, header, original, current, readOnly, onChange, onConfirmPerson, onConfirmBase, onSaveVar, onCopy, onIgnore }: Props) {
+export function FieldRow({ num, field, def, header, original, current, readOnly, onChange, onConfirmPerson, onConfirmBase, onSaveVar, onCopy, onIgnore, note, onNote }: Props) {
+  const [noting, setNoting] = useState(false);
   const status = field.status;
   const id = `f-${field.col}`;
   const changed = current !== original;
@@ -65,6 +70,11 @@ export function FieldRow({ num, field, def, header, original, current, readOnly,
         </label>
         {changed && <span className="badge badge--updated">изменено</span>}
         {person && field.confirmed && <span className="badge badge--confirmed">проверено</span>}
+        {note && !noting && (
+          <span className="badge badge--beta" data-tip={note}>
+            пометка
+          </span>
+        )}
         <span className="spacer" />
         <Menu
           label={`Действия с полем «${label}»`}
@@ -72,6 +82,7 @@ export function FieldRow({ num, field, def, header, original, current, readOnly,
             { label: 'Сохранить в переменные', icon: <Star size={16} />, onClick: onSaveVar, disabled: !current.trim() },
             { label: 'Скопировать значение', icon: <Copy size={16} />, onClick: onCopy, disabled: !current },
             { label: 'Вернуть как в файле', icon: <RotateCcw size={16} />, onClick: () => onChange(original), disabled: !changed || readOnly },
+            ...(onNote ? [{ label: note ? 'Изменить пометку' : 'Пометка', icon: <StickyNote size={16} />, onClick: () => setNoting(true), disabled: readOnly }] : []),
           ]}
         />
       </div>
@@ -179,6 +190,29 @@ export function FieldRow({ num, field, def, header, original, current, readOnly,
             </label>
           )}
           {base && <span className="small faint confirm-row__where">→ {base.tree}</span>}
+        </div>
+      )}
+
+      {onNote && (noting || note) && (
+        <div className="frow__note">
+          <StickyNote size={14} className="faint" />
+          {noting ? (
+            <textarea
+              className="input"
+              rows={2}
+              autoFocus
+              defaultValue={note ?? ''}
+              placeholder="Пометка для себя: что уточнить, у кого спросить… Видна только в приложении, в таблицу не пишется."
+              onBlur={(e) => {
+                onNote(e.target.value);
+                setNoting(false);
+              }}
+            />
+          ) : (
+            <button type="button" className="link-btn small" onClick={() => !readOnly && setNoting(true)}>
+              {note}
+            </button>
+          )}
         </div>
       )}
 

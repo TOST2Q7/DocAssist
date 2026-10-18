@@ -10,6 +10,7 @@ import { Alert } from '@/ui/Alert';
 import { useToast } from '@/ui/Toast';
 import { APP_ID } from '../constants';
 import { editCount } from '../model/session';
+import { GoogleSheetBar } from '../google/GoogleSheetBar';
 import { ExportDialog } from './ExportDialog';
 import { FixAllDialog, type Change } from './FixAllDialog';
 import { useCheckContext, useSession, useTable, useTableModel } from './hooks';
@@ -127,6 +128,8 @@ function Loaded({ path, row, onRow, onSheet, onClose, table, size, lastModified 
         rowIgnored={(s.session.ignoredRows ?? []).includes(row)}
         onIgnoreRow={(on) => s.ignoreRow(row, on)}
         tableIgnored={!!s.session.ignoreAll}
+        notes={s.session.notes?.[row]}
+        onNote={(col, text) => s.setNote(row, col, text)}
       />
     );
   }
@@ -154,6 +157,7 @@ function Loaded({ path, row, onRow, onSheet, onClose, table, size, lastModified 
           </select>
         )}
       </div>
+      <GoogleSheetBar path={path} table={table} columns={model.columns} names={model.names} s={s} />
       <div className="row toolbar">
         <button className="btn" onClick={() => setFixAll(allChanges())} disabled={s.readOnly}>
           <Wand2 size={16} /> Исправить у всех по шаблону

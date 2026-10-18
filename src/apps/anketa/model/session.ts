@@ -11,6 +11,8 @@ export interface CellEdit {
   /** Исходное значение (чтобы заметить, если таблицу заменили). */
   orig: string;
   value: string;
+  /** Когда исправлено (ISO) — для меток при расхождении с Google Таблицей. */
+  at?: string;
 }
 
 export interface AnketaSession {
@@ -28,6 +30,8 @@ export interface AnketaSession {
   ignoredRows?: number[];
   /** Проигнорированы все замечания таблицы. */
   ignoreAll?: boolean;
+  /** Пометки к ячейкам: строка → столбец → текст. Только в приложении, в таблицу не пишутся. */
+  notes?: Record<string, Record<string, string>>;
 }
 
 export const sessionDocType = defineDocType<AnketaSession>({
@@ -71,4 +75,29 @@ export function rowValues(original: string[], session: AnketaSession, row: numbe
 
 export function editCount(session: AnketaSession): number {
   return Object.values(session.edits).reduce((n, r) => n + Object.keys(r).length, 0);
+}
+
+/**
+ * Перенести правки и отметки на новые номера строк (таблицу обновили, и строки сдвинулись).
+ * map: старая строка → новая; строки без пары (человека удалили из таблицы) отбрасываются.
+ */
+export function remapSession(s: AnketaSession, map: Map<number, number>): AnketaSession {
+  const byRow = <T,>(rec: Record<string, T> | undefined): Record<string, T> => {
+    const out: Record<string, T> = {};
+    for (const [k, v] of Object.entries(rec ?? {})) {
+      const to = map.get(Number(k));
+      if (to !== undefined) out[to] = v;
+    }
+    return out;
+  };
+  const list = (xs: number[] | undefined) => (xs ?? []).map((r) => map.get(r)).filter((r): r is number => r !== undefined);
+  return {
+    ...s,
+    edits: byRow(s.edits),
+    confirmed: byRow(s.confirmed),
+    ignored: byRow(s.ignored),
+    notes: byRow(s.notes),
+    reviewed: list(s.reviewed),
+    ignoredRows: list(s.ignoredRows),
+  };
 }

@@ -160,7 +160,7 @@ export function useSession(fileName: string) {
     const setOne = (edits: AnketaSession['edits'], row: number, col: number, value: string, orig: string) => {
       const rowEdits: Record<string, CellEdit> = { ...(edits[row] ?? {}) };
       if (value === orig) delete rowEdits[col];
-      else rowEdits[col] = { orig, value };
+      else rowEdits[col] = { orig, value, at: new Date().toISOString() };
       if (Object.keys(rowEdits).length) edits[row] = rowEdits;
       else delete edits[row];
     };
@@ -238,8 +238,24 @@ export function useSession(fileName: string) {
       ignoreTable(on: boolean) {
         update((s) => ({ ...s, ignoreAll: on || undefined }));
       },
+      /** Пометка к ячейке (пусто — убрать). Только в приложении. */
+      setNote(row: number, col: number, text: string) {
+        update((s) => {
+          const notes = { ...(s.notes ?? {}) };
+          const r = { ...(notes[row] ?? {}) };
+          if (text.trim()) r[col] = text;
+          else delete r[col];
+          if (Object.keys(r).length) notes[row] = r;
+          else delete notes[row];
+          return { ...s, notes };
+        });
+      },
+      /** Заменить сеанс целиком (после обновления таблицы из Google). */
+      replace(fn: (s: AnketaSession) => AnketaSession) {
+        update(fn);
+      },
       resetAll() {
-        update((s) => ({ ...s, edits: {}, reviewed: [], confirmed: {}, ignored: {}, ignoredRows: [], ignoreAll: undefined }));
+        update((s) => ({ ...s, edits: {}, reviewed: [], confirmed: {}, ignored: {}, ignoredRows: [], ignoreAll: undefined, notes: {} }));
       },
     };
   }, [session, state?.loaded, state?.tooNew, state?.broken, state?.error, store]);

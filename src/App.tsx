@@ -5,6 +5,7 @@ import { WorkspaceProvider } from '@/core/workspace/WorkspaceContext';
 import { AboutPage } from '@/pages/AboutPage';
 import { BasePage } from '@/pages/BasePage';
 import { FaqPage } from '@/pages/FaqPage';
+import { GooglePage } from '@/pages/GooglePage';
 import { HomePage } from '@/pages/HomePage';
 import { NotFoundPage } from '@/pages/NotFoundPage';
 import { OutboxPage } from '@/pages/OutboxPage';
@@ -35,6 +36,7 @@ const router = createHashRouter([
       { path: '/base', element: <BasePage /> },
       { path: '/dictionaries', element: <Navigate to="/base" replace /> },
       { path: '/outbox', element: <OutboxPage /> },
+      { path: '/google', element: <GooglePage /> },
       {
         path: '/help',
         element: (

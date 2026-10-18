@@ -39,6 +39,11 @@ export interface AppManifest {
   requiresWorkspace: boolean;
   /** Файлы настроек приложения (пути в рабочей папке) — для «Скопировать настройки». Переменные, словарь и данные людей сюда не входят. */
   settingsFiles?: string[];
+  /**
+   * Что из данных приложения можно переносить между устройствами через личный Google Диск (зашифровано контрольной
+   * фразой, src/core/sync). Настройки из settingsFiles переносятся и так — здесь то, что сверх них.
+   */
+  syncGroups?: SyncGroupDef[];
   badges?: BadgeDef[];
   /** Порядок на главной (меньше — выше). */
   order?: number;
@@ -51,6 +56,19 @@ export interface AppManifest {
   fileDrop?: LazyExoticComponent<ComponentType<FileDropProps>>;
   /** Ленивая загрузка интерфейса (код приложения грузится только при открытии). */
   component?: LazyExoticComponent<ComponentType>;
+}
+
+export interface SyncGroupDef {
+  /** Постоянный идентификатор группы. */
+  id: string;
+  title: string;
+  hint?: string;
+  /** Пути файлов в рабочей папке. */
+  files: string[];
+  /** Включена по умолчанию. */
+  default?: boolean;
+  /** Здесь личные данные людей — предупредить перед включением. */
+  personal?: boolean;
 }
 
 export interface FileDropProps {

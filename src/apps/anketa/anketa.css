@@ -1161,3 +1161,26 @@
 .help-api__item .help-code {
   margin-top: 4px;
 }
+
+/* Пометка к ячейке — только в приложении. */
+.frow__note {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  margin-top: 6px;
+  padding: 6px 8px;
+  border-left: 3px solid var(--warning);
+  background: var(--warning-soft);
+  border-radius: var(--radius-s);
+}
+.frow__note textarea {
+  flex: 1;
+}
+.frow__note .link-btn {
+  text-align: left;
+  white-space: pre-wrap;
+}
+.gsheet-bar {
+  align-items: center;
+  gap: 8px;
+}

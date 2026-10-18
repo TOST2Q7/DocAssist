@@ -6,6 +6,7 @@ import { cachedUpdateInfo, checkForUpdate, type UpdateInfo } from '@/core/update
 import { formatDateTime } from '@/core/util/format';
 import { isFsAccessSupported } from '@/core/storage/fsAccess';
 import { Alert } from '@/ui/Alert';
+import { InstallButton } from '@/ui/InstallButton';
 
 const SUPPORT: [string, string, string][] = [
   ['Chrome, Edge, Яндекс, Opera (ПК)', 'Да — папка на диске', 'Полная поддержка'],
@@ -75,11 +76,11 @@ export function AboutPage() {
           )}
           {state === 'error' && <Alert kind="error">Не удалось проверить: {error}. Возможно, нет интернета — это не мешает работе.</Alert>}
           <p className="small muted" style={{ margin: 0 }}>
-            Проверка обновлений — единственный запрос в интернет: приложение узнаёт номер последней версии на{' '}
+            Сам по себе DocAssist ходит в интернет только за номером последней версии на{' '}
             <a href={GITHUB_URL} target="_blank" rel="noreferrer">
               GitHub
             </a>
-            . Ваши данные никуда не отправляются.
+            . Данные отправляются только в ваш Google-аккаунт и только если вы вошли в Google (раздел «Google и безопасность») — разработчику не уходит ничего.
           </p>
         </section>
 
@@ -114,6 +115,9 @@ export function AboutPage() {
 
         <section className="stack">
           <h2>Офлайн и установка</h2>
+          <div className="row">
+            <InstallButton />
+          </div>
           {IS_SINGLE_FILE ? (
             <p className="muted" style={{ margin: 0 }}>
               Вы используете версию-файл: всё приложение лежит в одном HTML-файле на вашем компьютере и работает без

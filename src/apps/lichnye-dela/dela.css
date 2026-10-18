@@ -420,3 +420,31 @@
 .dela-handout {
   overflow: visible;
 }
+
+/* ---------- Google Диск ---------- */
+.dela-drive-mark {
+  display: inline-flex;
+  vertical-align: -2px;
+  margin-left: 4px;
+}
+.dela-tile__bar .dela-drive-mark {
+  margin: 0 auto 0 4px;
+}
+.dela-drive-row {
+  gap: 8px;
+}
+.dela-color {
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  border: 2px solid var(--surface);
+  box-shadow: 0 0 0 1px var(--border-strong);
+  cursor: pointer;
+}
+.dela-color.is-selected {
+  box-shadow: 0 0 0 2px var(--brand);
+}
+.chip.is-selected {
+  border-color: var(--brand);
+  background: var(--brand-soft);
+}

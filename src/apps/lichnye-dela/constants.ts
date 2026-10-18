@@ -2,6 +2,8 @@ export const APP_ID = 'lichnye-dela';
 export const APP_FOLDER = 'Личные дела';
 /** Сведения личных дел: достижения, характеристика, подписи файлов, переводы. */
 export const CASES_FILE = `${APP_FOLDER}/cases.json`;
+/** Связь с Google Диском: древо папок, правила оформления, какие файлы где лежат. */
+export const DRIVE_FILE = `${APP_FOLDER}/drive.json`;
 /** Тексты документов (заявление, ходатайство, характеристика) — то, что изменено. */
 export const TEMPLATES_FILE = `${APP_FOLDER}/templates.json`;
 /** Свои шаблоны Word (.docx с метками {ФИО}…). */

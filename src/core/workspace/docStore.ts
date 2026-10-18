@@ -72,6 +72,20 @@ export class DocStore<T> {
     this.saveTimer = setTimeout(() => void this.flush(), 300);
   }
 
+  /** Есть несохранённые изменения. */
+  get pending(): boolean {
+    return this.saveTimer !== null;
+  }
+
+  /** Перечитать файл (его заменили извне — например, версией с Google Диска). Несохранённое теряется. */
+  reload(): Promise<void> {
+    if (this.saveTimer) clearTimeout(this.saveTimer);
+    this.saveTimer = null;
+    this.loading = null;
+    this.state = { ...this.state, broken: false, tooNew: false };
+    return this.load();
+  }
+
   async flush(): Promise<void> {
     if (this.saveTimer) {
       clearTimeout(this.saveTimer);
@@ -101,6 +115,16 @@ export function getDocStore<T>(ws: Workspace, path: string, dt: DocType<T>): Doc
     map.set(path, s as DocStore<unknown>);
   }
   return s;
+}
+
+/** Сохранить все отложенные изменения рабочей папки (перед сверкой с Google Диском). */
+export async function flushDocStores(ws: Workspace): Promise<void> {
+  for (const s of stores.get(ws)?.values() ?? []) if (s.pending) await s.flush();
+}
+
+/** Перечитать документ, если он открыт (файл заменили извне). */
+export async function reloadDocStore(ws: Workspace, path: string): Promise<void> {
+  await stores.get(ws)?.get(path)?.reload();
 }
 
 /** React-хук: подписка на живой документ. */

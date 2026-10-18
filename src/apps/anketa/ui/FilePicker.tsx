@@ -7,6 +7,7 @@ import { formatBytes, formatDateTime } from '@/core/util/format';
 import { useWorkspace, useWorkspaceRevision } from '@/core/workspace/WorkspaceContext';
 import { useToast } from '@/ui/Toast';
 import { APP_FOLDER } from '../constants';
+import { GoogleTablesList, OpenGoogleSheet } from '../google/GoogleTables';
 
 export function FilePicker({ onOpen, onPaste }: { onOpen: (path: string) => void; onPaste: () => void }) {
   const { workspace } = useWorkspace();
@@ -58,10 +59,12 @@ export function FilePicker({ onOpen, onPaste }: { onOpen: (path: string) => void
         <button className="btn" onClick={onPaste}>
           <ClipboardPaste size={16} /> Вставить из буфера
         </button>
+        <OpenGoogleSheet onOpen={onOpen} />
         <button className="btn btn--primary" onClick={upload}>
           <Upload size={16} /> Добавить таблицу
         </button>
       </div>
+      <GoogleTablesList onOpen={onOpen} sessions={sessions} />
       {files === null ? (
         <div className="loading">Читаем рабочую папку…</div>
       ) : files.length === 0 ? (

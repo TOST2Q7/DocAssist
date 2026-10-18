@@ -11,3 +11,5 @@ export const GITHUB_URL = `https://github.com/${GITHUB_OWNER}/${GITHUB_REPO}`;
 export const RELEASES_URL = `${GITHUB_URL}/releases`;
 /** Ветка, из которой берётся номер версии, если релизов ещё нет. */
 export const RELEASE_BRANCH = 'main';
+/** Адрес опубликованного приложения (GitHub Pages) — его же знает Google (Client ID). */
+export const PAGES_ORIGIN = `https://${GITHUB_OWNER.toLowerCase()}.github.io`;

@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { HANDOUT_FOLDER } from '@/core/handout/handout';
 import { Alert } from '@/ui/Alert';
+import { DriveView } from './drive/DriveView';
 import { useCases } from './model/cases';
 import { HandoutView } from './ui/HandoutView';
 import { HelpView } from './ui/HelpView';
@@ -24,7 +25,7 @@ export default function LichnyeDelaApp() {
   const [transfer, setTransfer] = useState<string[] | null>(null);
 
   const viewParam = params.get('view');
-  const view = viewParam === 'templates' || viewParam === 'help' || viewParam === 'handout' ? viewParam : 'people';
+  const view = viewParam === 'templates' || viewParam === 'help' || viewParam === 'handout' || viewParam === 'drive' ? viewParam : 'people';
   const handout = useFolderFiles(HANDOUT_FOLDER)?.length ?? 0;
   const personId = params.get('p');
   const tabParam = params.get('tab');
@@ -51,6 +52,9 @@ export default function LichnyeDelaApp() {
             {HANDOUT_FOLDER}
             {handout ? ` (${handout})` : ''}
           </button>
+          <button role="tab" aria-selected={view === 'drive'} aria-pressed={view === 'drive'} onClick={() => set({ view: 'drive', p: null, tab: null })}>
+            Google Диск
+          </button>
           <button role="tab" aria-selected={view === 'templates'} aria-pressed={view === 'templates'} onClick={() => set({ view: 'templates', p: null, tab: null })}>
             Шаблоны документов
           </button>
@@ -64,6 +68,8 @@ export default function LichnyeDelaApp() {
         <TemplatesView />
       ) : view === 'handout' ? (
         <HandoutView cases={cases} />
+      ) : view === 'drive' ? (
+        <DriveView cases={cases} />
       ) : view === 'help' ? (
         <HelpView />
       ) : personId ? (

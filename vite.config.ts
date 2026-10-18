@@ -4,6 +4,7 @@ import { VitePWA } from 'vite-plugin-pwa';
 import { viteSingleFile } from 'vite-plugin-singlefile';
 import { fileURLToPath } from 'node:url';
 import { readFileSync } from 'node:fs';
+import { createHash } from 'node:crypto';
 
 const pkg = JSON.parse(readFileSync(new URL('./package.json', import.meta.url), 'utf-8')) as { version: string };
 
@@ -17,6 +18,42 @@ function inlineFavicon(): Plugin {
       html
         .replace(/<link rel="icon"[^>]*>/, `<link rel="icon" type="image/svg+xml" href="${dataUri}" />`)
         .replace(/\s*<link rel="apple-touch-icon"[^>]*>/, ''),
+  };
+}
+
+
+/*
+ * Политика безопасности страницы (CSP) для веб-версии: скрипты — только свои и Google (вход, окно выбора),
+ * соединения — только с Google и GitHub (проверка версии). Чужой код, вставленный расширением или программой,
+ * браузер не выполнит, а приложение покажет попытку в «Проверке безопасности» (src/core/security).
+ * Встроенный скрипт темы разрешается по отпечатку. В версии-файле не используется: там весь код встроенный.
+ */
+function contentSecurityPolicy(): Plugin {
+  const G = 'https://*.google.com https://*.googleapis.com https://*.gstatic.com';
+  return {
+    name: 'docassist-csp',
+    apply: 'build',
+    transformIndexHtml: {
+      order: 'post',
+      handler(html) {
+        const hashes = [...html.matchAll(/<script>([\s\S]*?)<\/script>/g)].map((m) => `'sha256-${createHash('sha256').update(m[1]).digest('base64')}'`);
+        const policy = [
+          "default-src 'self'",
+          `script-src 'self' ${hashes.join(' ')} https://accounts.google.com https://apis.google.com https://*.gstatic.com`,
+          `style-src 'self' 'unsafe-inline' https://accounts.google.com https://*.gstatic.com`,
+          `img-src 'self' data: blob: ${G} https://*.googleusercontent.com`,
+          "font-src 'self' data: https://fonts.gstatic.com",
+          `connect-src 'self' https://*.googleapis.com https://accounts.google.com https://api.github.com https://raw.githubusercontent.com`,
+          `frame-src ${G} https://*.googleusercontent.com`,
+          "worker-src 'self' blob:",
+          "manifest-src 'self'",
+          "object-src 'none'",
+          "base-uri 'self'",
+          "form-action 'self' https://accounts.google.com",
+        ].join('; ');
+        return html.replace(/(<meta charset="UTF-8" \/>)/, `$1\n    <meta http-equiv="Content-Security-Policy" content="${policy}" />`);
+      },
+    },
   };
 }
 
@@ -61,6 +98,7 @@ export default defineConfig(({ mode }) => {
       ? [react(), viteSingleFile({ removeViteModuleLoader: true }), inlineFavicon()]
       : [
           react(),
+          contentSecurityPolicy(),
           VitePWA({
             registerType: 'prompt',
             includeAssets: ['favicon.svg', 'apple-touch-icon.png'],

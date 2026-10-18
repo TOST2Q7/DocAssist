@@ -3125,3 +3125,36 @@ a.cover-app--primary:hover {
     width: 100%;
   }
 }
+
+/* ---------- Google, безопасность, расхождения ---------- */
+.google-bar {
+  align-items: center;
+  gap: 10px;
+}
+.sec--ok {
+  color: var(--success);
+}
+.sec--warn {
+  color: var(--warning);
+}
+.sec--fail {
+  color: var(--error);
+}
+.sec--info {
+  color: var(--info);
+}
+.conflict__img {
+  max-width: 100%;
+  max-height: 140px;
+  margin-top: 6px;
+  border-radius: var(--radius-s);
+  object-fit: contain;
+  background: var(--surface-2, var(--bg));
+}
+/* Окно выбора Google — поверх окон приложения. */
+.picker-dialog-bg {
+  z-index: 2000 !important;
+}
+.picker-dialog {
+  z-index: 2001 !important;
+}

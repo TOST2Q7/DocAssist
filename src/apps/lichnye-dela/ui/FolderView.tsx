@@ -1,5 +1,6 @@
 import { Award, Camera, Download, ExternalLink, FileText, FolderOutput, FolderPlus, PenLine, Plus, ScanLine, Star, Trash2, Upload, Wand2 } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { fioText, usePeople, type PersonRecord } from '@/core/people/people';
 import { baseName, joinPath, type FsEntry } from '@/core/storage/types';
 import { downloadBytes, mimeFor, pickFiles } from '@/core/util/download';
@@ -15,6 +16,7 @@ import { fillText, makeResolver, personGender, placeholderValues } from '../mode
 import { CHARACTERISTIC_DRAFT, templateDocx, useTemplates } from '../model/templates';
 import { fileName, isImageName } from '../model/transfer';
 import { shortFio } from '../model/names';
+import { CaseDrive, DriveMark, useDriveMarks } from '../drive/CaseDrive';
 import { Preview, Thumb } from './files';
 import { openFile, saveFiles, useFolderFiles } from './hooks';
 import { ScanActionDialog } from './ScanActionDialog';
@@ -30,6 +32,7 @@ function useFileActions(c: PersonCase, cases: CasesApi) {
   const { workspace } = useWorkspace();
   const toast = useToast();
   const [preview, setPreview] = useState<string | null>(null);
+  const drive = useDriveMarks();
   return {
     preview,
     setPreview,
@@ -47,6 +50,7 @@ function useFileActions(c: PersonCase, cases: CasesApi) {
       await workspace.remove(casePath(c, rel));
       cases.forgetFile(c.personId, rel);
       toast(`Удалено: ${baseName(rel)}`);
+      await drive.onRemoved(rel);
     },
   };
 }
@@ -101,6 +105,7 @@ function PhotosSection({ c, cases, readOnly }: SectionProps) {
               <div key={e.path} className={`dela-tile ${isMain ? 'is-main' : ''}`}>
                 <Thumb path={e.path} onClick={() => act.open(r)} />
                 <div className="dela-tile__bar">
+                  <DriveMark rel={r} />
                   <button
                     className={`icon-btn icon-btn--sm ${isMain ? 'brand-icon' : ''}`}
                     onClick={() => cases.update(c.personId, (x) => ({ ...x, photo: r }))}
@@ -146,7 +151,9 @@ function FileRow({ c, cases, rel, entry, readOnly, kinds, act, selected, onSelec
       {onSelect && <input type="checkbox" className="dela-file__check" checked={!!selected} onChange={(e) => onSelect(e.target.checked)} aria-label={`Отметить ${entry.name}`} />}
       <Thumb path={entry.path} onClick={() => act.open(rel)} />
       <div className="list__main stack stack--s">
-        <div className="list__title">{entry.name}</div>
+        <div className="list__title">
+          {entry.name} <DriveMark rel={rel} />
+        </div>
         <div className="list__sub">{formatBytes(entry.size)}</div>
         {kinds && (
           <div className="row row--nowrap">
@@ -481,6 +488,7 @@ function OtherFilesSection({ c, cases, readOnly }: SectionProps) {
 }
 
 export function FolderView({ record, cases }: { record: PersonRecord; cases: CasesApi }) {
+  const [, setParams] = useSearchParams();
   const toast = useToast();
   const people = usePeople();
   const { workspace } = useWorkspace();
@@ -543,13 +551,15 @@ export function FolderView({ record, cases }: { record: PersonRecord; cases: Cas
         )}
       </div>
       {readOnly && <Alert kind="warning">Сведения личных дел открыты только для чтения (файл создан более новой версией DocAssist или повреждён).</Alert>}
-      <div className="dela-sections">
-        <PhotosSection c={c} cases={cases} readOnly={readOnly} />
-        <ScansSection c={c} cases={cases} readOnly={readOnly} record={record} />
-        <AchievementsSection c={c} cases={cases} readOnly={readOnly} />
-        <CharacteristicSection c={c} cases={cases} readOnly={readOnly} record={record} />
-        <OtherFilesSection c={c} cases={cases} readOnly={readOnly} />
-      </div>
+      <CaseDrive c={c} record={record} cases={cases} onOpenDriveTab={() => setParams({ view: 'drive' })}>
+        <div className="dela-sections">
+          <PhotosSection c={c} cases={cases} readOnly={readOnly} />
+          <ScansSection c={c} cases={cases} readOnly={readOnly} record={record} />
+          <AchievementsSection c={c} cases={cases} readOnly={readOnly} />
+          <CharacteristicSection c={c} cases={cases} readOnly={readOnly} record={record} />
+          <OtherFilesSection c={c} cases={cases} readOnly={readOnly} />
+        </div>
+      </CaseDrive>
     </div>
   );
 }

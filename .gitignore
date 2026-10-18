@@ -6,3 +6,4 @@ dev-dist
 coverage
 dist-single
 dist-web
+dist-test

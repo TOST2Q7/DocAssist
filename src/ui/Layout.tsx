@@ -9,6 +9,7 @@ import { FileDrop } from './FileDrop';
 import { usePointerEffects } from './effects';
 import { Header } from './Header';
 import { sectionKey, useSection } from './section';
+import { SyncAuto } from './SyncAuto';
 import { Tooltip } from './Tooltip';
 import { VarSuggest } from './VarSuggest';
 
@@ -112,6 +113,7 @@ export function Layout() {
       <VarSuggest />
       <Tooltip />
       <FileDrop />
+      <SyncAuto />
       <Footer />
       {/* Новая страница открывается сверху, «Назад» возвращает туда, где были. Внутри страницы (?…) не прыгает. */}
       <ScrollRestoration getKey={(location) => location.pathname} />
