@@ -1,6 +1,5 @@
 import { RefreshCw } from 'lucide-react';
 import { useState } from 'react';
-import { Link } from 'react-router-dom';
 import { APP_VERSION, BUILD_DATE, GITHUB_URL, IS_SINGLE_FILE, RELEASES_URL } from '@/core/config';
 import { cachedUpdateInfo, checkForUpdate, type UpdateInfo } from '@/core/update/checkUpdate';
 import { formatDateTime } from '@/core/util/format';
@@ -39,7 +38,7 @@ export function AboutPage() {
         <h1>О программе</h1>
         <p>
           Рабочее место мастера студенческого отряда: инструменты для быстрой и точной работы с документами РСО. Оформление —
-          по фирменному стилю РСО (<Link to="/rso">Материалы РСО</Link>).
+          по фирменному стилю РСО.
         </p>
       </div>
       <div className="stack stack--l">

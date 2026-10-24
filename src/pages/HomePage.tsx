@@ -14,7 +14,7 @@ import {
 } from 'lucide-react';
 import { useEffect, useRef, useState, type CSSProperties } from 'react';
 import { Link } from 'react-router-dom';
-import { APP_VERSION } from '@/core/config';
+import { APP_VERSION, IS_SINGLE_FILE } from '@/core/config';
 import { useOutbox } from '@/core/outbox/outbox';
 import { APPS, appPath, getApp } from '@/core/registry/apps';
 import { SERVICE_MENU } from '@/core/registry/menu';
@@ -28,6 +28,7 @@ import { Badges, CountBadge } from '@/ui/Badges';
 import { Dimension, SectionHead, Sky, SplitWords, Stamp, useReveal } from '@/ui/Blueprint';
 import { statusBadges } from '@/ui/BurgerMenu';
 import { useCountUp, useHoverTrack } from '@/ui/effects';
+import { Editions } from './home/Editions';
 
 /*
  * Главная — обложка. Первый экран отвечает на три вопроса простыми словами:
@@ -302,6 +303,9 @@ export function HomePage() {
             })}
           </ol>
         </section>
+
+        {/* В версии-файле — что даст сайт и вход в Google. */}
+        {IS_SINGLE_FILE && <Editions no={next()} />}
 
         <section className="section reveal">
           <SectionHead no={next()} title="Ещё полезное" aside="справка, база, настройки" />

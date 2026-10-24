@@ -2223,55 +2223,85 @@ a.techcard__link:focus-visible .techcard__go {
   }
 }
 
-/* ---------- Материалы РСО ---------- */
-.swatches {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-  gap: 12px;
+/* ---------- Главная: версии DocAssist (только в версии-файле) ---------- */
+.editions .table {
+  min-width: 640px;
 }
-.swatch {
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
+.editions td {
+  vertical-align: middle;
+}
+.editions th:not(:first-child),
+.editions td:not(:first-child) {
+  width: 19%;
+  text-align: center;
+}
+.editions th.editions__google {
+  color: var(--brand);
+}
+.editions td.editions__here {
+  background: var(--surface-2);
+}
+.editions td.editions__google {
+  background: var(--brand-soft);
+}
+.editions__tag {
+  display: inline-block;
+  margin-left: 6px;
+  padding: 0 5px;
+  border-radius: var(--radius-s);
+  background: var(--surface-3);
+  color: var(--text);
+  text-transform: none;
+  letter-spacing: 0;
+}
+.editions .editions__group th {
+  text-align: left;
+  color: var(--text);
   background: var(--surface);
-  overflow: hidden;
+  border-top: 2px solid var(--text);
 }
-.swatch__color {
-  height: 96px;
-  display: flex;
-  align-items: flex-end;
-  padding: 10px 12px;
-  font-family: var(--font-display);
-  font-weight: 500;
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-  color: #0054a6;
-  border-bottom: 1px solid var(--border);
+.edition-yes,
+.edition-no {
+  display: inline-flex;
+  vertical-align: middle;
 }
-.swatch__color--dark {
-  color: #ffffff;
-}
-.swatch__body {
-  padding: 10px 12px 12px;
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-}
-.font-sample {
-  font-size: 1.7rem;
-  line-height: 1.2;
-  font-weight: 700;
+.edition-yes {
   color: var(--brand);
-  overflow-wrap: anywhere;
 }
-.rules-short {
-  margin: 0;
-  padding-left: 20px;
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
+.edition-no {
+  color: var(--text-faint);
 }
-.rules-short li::marker {
-  color: var(--brand);
+.edition-note {
+  font-size: 0.85rem;
+  color: var(--text-muted);
+}
+.editions__foot {
+  margin: 14px 0 12px;
+  max-width: 78ch;
+}
+/* На телефоне таблица листается вбок, а названия возможностей остаются на месте. */
+@media (max-width: 640px) {
+  .editions .table {
+    min-width: 0;
+    width: auto;
+  }
+  .editions th:not(:first-child),
+  .editions td:not(:first-child) {
+    min-width: 124px;
+  }
+  .editions tbody td:first-child,
+  .editions thead th:first-child {
+    position: sticky;
+    left: 0;
+    z-index: 1;
+    min-width: 150px;
+    max-width: 150px;
+    background: var(--surface);
+    box-shadow: 1px 0 0 var(--border);
+  }
+  .editions thead th:first-child {
+    background: var(--surface-2);
+  }
 }
 
 /* Поле поиска со значком лупы. */
