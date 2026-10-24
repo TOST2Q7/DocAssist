@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # shellcheck source-path=SCRIPTDIR
 # DocAssist — помощник для работы с репозиторием на компьютере (macOS, Linux).
-# Меню: ./tools/da   ·   Сразу действие: ./tools/da status | pull | commit "текст" | push | sync | branch | merge | pr | release | build | doctor
+# Меню: ./tools/da   ·   Сразу действие: ./tools/da status | pull | commit "текст" | push | sync | branch | merge | pr | release | build | journal | doctor
 # Совместимо с bash 3.2 (стоит на macOS по умолчанию).
 
 # Папка скрипта (с учётом ссылки ~/bin/da → tools/da).
@@ -17,6 +17,7 @@ DA_DIR=$(cd -P "$(dirname "$src")" && pwd)
 . "$DA_DIR/lib/git.sh"
 . "$DA_DIR/lib/build.sh"
 . "$DA_DIR/lib/release.sh"
+. "$DA_DIR/lib/journal.sh"
 
 ROOT=$(git -C "$DA_DIR" rev-parse --show-toplevel 2>/dev/null) || { fail "Скрипт должен лежать внутри репозитория DocAssist"; exit 1; }
 cd "$ROOT" || exit 1
@@ -37,6 +38,7 @@ ${B}DocAssist — помощник${N}
   ${B}da pr${N}              Pull Request
   ${B}da release${N}         релизы: выпустить, версия, описание
   ${B}da build${N}           собрать DocAssist.html, проверки, запуск
+  ${B}da journal${N}         журнал грамоток: ключи, кто кому передавал, распечатать копию
   ${B}da doctor${N}          проверить, всё ли установлено
 HELP
 }
@@ -57,7 +59,8 @@ menu() {
       "Релизы: выпустить, версия, описание" \
       "Собрать DocAssist.html, проверки, запуск" \
       "История коммитов" \
-      "Проверить окружение (git, gh, node)"
+      "Проверить окружение (git, gh, node)" \
+      "Журнал грамоток: ключи, кто кому передавал, распечатать копию"
     CHOICE_ZERO=""
     case $CHOICE in
       0) say "Пока!"; return 0 ;;
@@ -73,6 +76,7 @@ menu() {
       10) cmd_build ;;
       11) cmd_log ;;
       12) cmd_doctor ;;
+      13) cmd_journal ;;
     esac
   done
 }
@@ -93,6 +97,7 @@ case "${1:-}" in
   build) cmd_build ;;
   log) cmd_log ;;
   doctor) cmd_doctor ;;
+  journal) cmd_journal ;;
   help|-h|--help) usage ;;
   *) fail "Неизвестная команда: $1"; usage; exit 1 ;;
 esac
