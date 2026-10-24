@@ -175,7 +175,7 @@ export function GramotkiDialog() {
             <p className="small muted" style={{ margin: 0 }}>
               <strong>Гра́мотка</strong> — папка на одного человека: данные, фото, сканы, достижения. Все грамотки закрыты этой фразой: без неё их не откроет никто — ни вы, ни разработчик. Регистр
               букв, «ё» и лишние пробелы не важны.{' '}
-              <Link to="/help#gramotki" onClick={close}>
+              <Link to="/faq#gramotka" onClick={close}>
                 Подробнее
               </Link>
             </p>

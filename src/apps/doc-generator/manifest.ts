@@ -12,7 +12,7 @@ const manifest: AppManifest = {
     'Выберите человека из базы людей — приложение заполнит бланк Word по образцу методического пособия: Times New Roman 12, сетка таблицы не меняется, файл называется «Фамилия И.О. - Учетная карточка члена организации». Недостающие данные подсвечиваются — их можно вписать прямо в форме и дописать в базу людей.',
   icon: FileText,
   status: 'beta',
-  version: '0.1.0',
+  version: '0.2.0',
   folder: APP_FOLDER,
   settingsFiles: [SETTINGS_FILE],
   requiresWorkspace: true,
