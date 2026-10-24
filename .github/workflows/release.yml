@@ -70,5 +70,13 @@ jobs:
             fi
           else
             if [ -f "$NOTES" ]; then ARGS=(--notes-file "$NOTES"); else ARGS=(--generate-notes); fi
-            gh release create "$TAG" release/* --title "DocAssist $TAG" "${ARGS[@]}"
+            # Заголовок «vПрошлая - vНовая» помощник da пишет в описание тега; у простого тега — «DocAssist vX.Y.Z».
+            # checkout кладёт тег без описания — забираем его заново.
+            git fetch --quiet --depth=1 --force origin "refs/tags/$TAG:refs/tags/$TAG" || true
+            TITLE=""
+            if [ "$(git cat-file -t "refs/tags/$TAG" 2>/dev/null)" = tag ]; then
+              TITLE=$(git tag -l --format='%(contents:subject)' "$TAG")
+            fi
+            [ -n "$TITLE" ] || TITLE="DocAssist $TAG"
+            gh release create "$TAG" release/* --title "$TITLE" "${ARGS[@]}"
           fi

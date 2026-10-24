@@ -65,7 +65,7 @@ handle_conflicts() {
   case $CHOICE in
     1)
       for f in $files; do [ "$f" != DocAssist.html ] && edit_file "$f"; done
-      if [ -z "$(git diff --name-only --diff-filter=U | grep -v '^DocAssist.html$')" ] || confirm "Все конфликты поправлены?"; then
+      if ! git diff --name-only --diff-filter=U | grep -qv '^DocAssist.html$' || confirm "Все конфликты поправлены?"; then
         printf '%s\n' "$files" | grep -q '^DocAssist.html$' && build_html && git add DocAssist.html
         run git add -A && run git commit --no-edit && ok "Слияние завершено"
       fi

@@ -14,6 +14,44 @@ remote_version() {
 
 notes_path() { printf 'docs/releases/v%s.md' "$1"; }
 
+is_version() { printf '%s\n' "$1" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+$'; }
+
+# По возрастанию номера (sort -V есть не во всех версиях macOS).
+sort_versions() { sort -t. -k1,1n -k2,2n -k3,3n; }
+
+# Новее ли версия $1, чем $2.
+version_gt() {
+  [ "$1" != "$2" ] && [ "$(printf '%s\n%s\n' "$1" "$2" | sort_versions | tail -1)" = "$1" ]
+}
+
+# Последний выпущенный релиз — старший тег vX.Y.Z на GitHub. Пусто, если релизов ещё не было.
+last_release_version() {
+  git ls-remote --tags --refs origin 'refs/tags/v*' 2>/dev/null |
+    sed -n 's|.*refs/tags/v\([0-9][0-9]*\.[0-9][0-9]*\.[0-9][0-9]*\)$|\1|p' | sort_versions | tail -1
+}
+
+# С какой версии считается релиз: последний релиз, а если его нет — прошлое описание в docs/releases.
+prev_version() {
+  local v="$1" last="$2" f p list=""
+  if [ -n "$last" ] && version_gt "$v" "$last"; then
+    printf '%s' "$last"
+    return
+  fi
+  for f in docs/releases/v*.md; do
+    [ -e "$f" ] || continue
+    p=${f#docs/releases/v}
+    p=${p%.md}
+    is_version "$p" && version_gt "$v" "$p" && list="$list$p
+"
+  done
+  printf '%s' "$list" | sort_versions | tail -1
+}
+
+# Заголовок релиза: «v0.6.0 - v0.7.0» (с прошлой версии на новую) или «v0.7.0», если прошлой нет.
+release_title() {
+  if [ -n "$1" ]; then printf 'v%s - v%s' "$1" "$2"; else printf 'v%s' "$2"; fi
+}
+
 # owner/repo из адреса origin — чтобы gh работал с нужным репозиторием.
 detect_repo() {
   local url
@@ -39,21 +77,11 @@ write_notes_template() {
   cat > "$f" <<NOTES
 **Коротко, что нового — одной строкой.**
 
-## Что нового
+## Изменения
 
 - 
 
-## Данные
-
-Таблицы, правки, база и настройки сохраняются.
-
-## Файлы
-
-| Файл | Для чего |
-|---|---|
-| **DocAssist-$v.html** | Для компьютера: скачать и открыть двойным кликом в Chrome, Edge или Яндекс Браузере. |
-| **DocAssist-web-$v.zip** | Веб-версия для размещения на сервере (офлайн, установка как приложение). |
-| SHA256SUMS.txt | Контрольные суммы. |
+**Скачать:** DocAssist-$v.html — открыть двойным кликом в Chrome, Edge или Яндекс Браузере. Для сервера — DocAssist-web-$v.zip.
 NOTES
   ok "Создан черновик описания: $f"
 }
@@ -79,34 +107,46 @@ set_version() {
   ok "Версия: $v"
 }
 
-cmd_version() {
-  local cur major minor patch v
-  cur=$(pkg_version)
+# Выбор номера: pick_version "Заголовок" база [keep] — варианты считаются от базы, keep — предложить оставить её.
+# Номер — в PICKED_VERSION (пусто — отмена); код 1 — номер введён неверно.
+pick_version() {
+  local head="$1" base="$2" keep="${3:-}" major minor patch
+  PICKED_VERSION=""
   IFS=. read -r major minor patch <<EOF2
-$cur
+$base
 EOF2
   patch=${patch%%[!0-9]*}
-  choose "Новая версия (сейчас $cur)" \
-    "$major.$minor.$((patch + 1)) — мелкие исправления" \
-    "$major.$((minor + 1)).0 — заметные изменения" \
-    "$((major + 1)).0.0 — большой выпуск" \
-    "Своя"
-  case $CHOICE in
-    1) v="$major.$minor.$((patch + 1))" ;;
-    2) v="$major.$((minor + 1)).0" ;;
-    3) v="$((major + 1)).0.0" ;;
-    4) v=$(ask "Версия (например, 1.2.3)") ;;
-    *) return 0 ;;
-  esac
-  case "$v" in [0-9]*.[0-9]*.[0-9]*) ;; *) fail "Версия — три числа через точку: 1.2.3"; return 1 ;; esac
+  local p1="$major.$minor.$((patch + 1))" p2="$major.$((minor + 1)).0" p3="$((major + 1)).0.0"
+  local vs=() labels=()
+  if [ -n "$keep" ]; then vs+=("$base"); labels+=("$base — как в package.json"); fi
+  vs+=("$p1" "$p2" "$p3")
+  labels+=("$p1 — мелкие исправления" "$p2 — заметные изменения" "$p3 — большой выпуск")
+  choose "$head" "${labels[@]}" "Своя"
+  [ "$CHOICE" = 0 ] && return 0
+  local v
+  if [ "$CHOICE" -le ${#vs[@]} ]; then v="${vs[$((CHOICE - 1))]}"; else v=$(ask "Версия (например, 1.2.3)"); fi
+  is_version "$v" || { fail "Версия — три числа через точку: 1.2.3"; return 1; }
+  PICKED_VERSION="$v"
+}
+
+# Записать новую версию: package.json, черновик описания, коммит и отправка.
+apply_version() {
+  local v="$1" f
   set_version "$v" || return 1
   [ -f "$(notes_path "$v")" ] || write_notes_template "$v"
   confirm "Написать описание сейчас?" y && edit_file "$(notes_path "$v")"
   if confirm "Сохранить (коммит «Версия $v») и отправить на GitHub?" y; then
-    local f
     for f in package.json package-lock.json "$(notes_path "$v")"; do [ -e "$f" ] && run git add "$f"; done
     run git commit -m "Версия $v" && cmd_push
   fi
+}
+
+cmd_version() {
+  local cur
+  cur=$(pkg_version)
+  pick_version "Новая версия (сейчас $cur)" "$cur" || return 1
+  [ -n "$PICKED_VERSION" ] || return 0
+  apply_version "$PICKED_VERSION"
 }
 
 cmd_notes() {
@@ -143,16 +183,35 @@ cmd_release() {
 }
 
 release_create() {
-  local v tag notes target cur
+  local v tag notes target cur last rtitle
   fetch || return 1
   cur=$(current_branch)
   v=$(pkg_version)
+  last=$(last_release_version)
+  title "Выпуск релиза"
+  if [ -n "$last" ]; then say "  Последний релиз: v$last"; else say "  Релизов ещё не было"; fi
+  say "  В package.json:  $v"
+
+  # Версия релиза: как в package.json, если она новее последнего релиза, или новая.
+  local base="$v" keep=y
+  if [ -n "$last" ] && ! version_gt "$v" "$last"; then base="$last"; keep=""; fi
+  pick_version "Какая версия будет?" "$base" "$keep" || return 1
+  [ -n "$PICKED_VERSION" ] || return 0
+  if [ -n "$last" ] && ! version_gt "$PICKED_VERSION" "$last"; then
+    warn "Версия $PICKED_VERSION не новее последнего релиза v$last — приложения не предложат обновиться."
+    confirm "Всё равно выпустить $PICKED_VERSION?" || return 0
+  fi
+  if [ "$PICKED_VERSION" != "$v" ]; then
+    v="$PICKED_VERSION"
+    apply_version "$v" || return 1
+  fi
   tag="v$v"
   notes=$(notes_path "$v")
-  title "Выпуск релиза $tag"
+  rtitle=$(release_title "$(prev_version "$v" "$last")" "$v")
+  title "Выпуск релиза $rtitle"
 
   if tag_exists_remote "$tag"; then
-    fail "Релиз (тег) $tag уже есть. Поднимите версию: «Новая версия»."
+    fail "Релиз (тег) $tag уже есть. Выберите другую версию."
     return 1
   fi
   if [ ! -f "$notes" ]; then
@@ -204,14 +263,15 @@ release_create() {
   local pre=""
   confirm "Пометить как предварительный выпуск (pre-release)?" && pre="--prerelease"
   title "Итог"
-  say "  Релиз:   $tag — «DocAssist $tag»"
-  say "  Ветка:   $target"
-  say "  Файлы:   соберёт GitHub (DocAssist-$v.html, DocAssist-web-$v.zip)"
+  say "  Релиз:     $tag"
+  say "  Заголовок: $rtitle"
+  say "  Ветка:     $target"
+  say "  Файлы:     соберёт GitHub (DocAssist-$v.html, DocAssist-web-$v.zip)"
   confirm "Выпустить?" || { info "Отменено"; return 0; }
 
   if have gh && gh auth status >/dev/null 2>&1; then
     # shellcheck disable=SC2086
-    run gh release create "$tag" --target "$target" --title "DocAssist $tag" --notes-file "$notes" $pre || { fail "GitHub не создал релиз"; return 1; }
+    run gh release create "$tag" --target "$target" --title "$rtitle" --notes-file "$notes" $pre || { fail "GitHub не создал релиз"; return 1; }
     ok "Релиз $tag создан. Файлы появятся через 3–5 минут — когда закончится сборка."
     local url
     url=$(gh release view "$tag" --json url -q .url 2>/dev/null)
@@ -219,7 +279,8 @@ release_create() {
     confirm "Следить за сборкой здесь?" y && release_watch
   else
     warn "GitHub CLI недоступен — выпускаю через тег: сборка на GitHub сама создаст релиз с описанием из $notes."
-    run git tag -a "$tag" "origin/$target" -m "DocAssist $tag" && retry git push origin "$tag" && ok "Тег $tag отправлен — релиз появится через 3–5 минут (вкладка Actions → «Релиз»)."
+    # Заголовок релиза сборка возьмёт из описания тега.
+    run git tag -a "$tag" "origin/$target" -m "$rtitle" && retry git push origin "$tag" && ok "Тег $tag отправлен — релиз появится через 3–5 минут (вкладка Actions → «Релиз»)."
   fi
 }
 

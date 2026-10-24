@@ -52,9 +52,10 @@
   Скрипт берёт версию из `package.json` и описание из `docs/releases/vX.Y.Z.md`, проверяет и вызывает
   `gh release create`; файлы собирает `.github/workflows/release.yml`.
 - Поэтому сессии **не создают релизы и теги сами**. Чтобы версия была готова к выпуску: поднять `version` в
-  `package.json` (и `package-lock.json`), написать `docs/releases/vX.Y.Z.md` (формат — как у прошлых версий:
-  простыми словами для работников, таблица файлов в конце), запушить в `testing` — и сказать пользователю, что можно
-  выпускать через `da release`.
+  `package.json` (и `package-lock.json`), написать `docs/releases/vX.Y.Z.md` (коротко, простыми словами для
+  работников: строка «что нового», `## Изменения` — только самое важное, строка «Скачать»; образец — черновик в
+  `write_notes_template`, `tools/lib/release.sh`), запушить в `testing` — и сказать пользователю, что можно выпускать
+  через `da release`. Заголовок релиза «vПрошлая - vНовая» ставит сам `da`.
 - Скрипты в `tools/` должны работать в bash 3.2 и с BSD-утилитами macOS: без `declare -A`, `mapfile`, `${x,,}`,
   `sed -i`, `readlink -f`. Проверка: `shellcheck -x -s bash tools/da tools/lib/*.sh`.
 
