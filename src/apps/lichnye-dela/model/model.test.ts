@@ -4,7 +4,8 @@ import { MemoryAdapter } from '@/core/storage/memoryAdapter';
 import { PERSON_FIELDS } from '@/core/schema/fields';
 import { readZip, writeZip } from '@/core/util/zip';
 import { Workspace } from '@/core/workspace/workspace';
-import { folderNameFor, moveFolder, newCase, renamedFile, safeName, uniqueName, type PersonCase } from './cases';
+import { gramotkaPath } from '@/core/gramotka/store';
+import { caseData, caseOf, renamedFile, safeName, type PersonCase } from './cases';
 import { FIELD_GROUPS } from './groups';
 import { declineFio, guessGender, shortFio, signFio } from './names';
 import { fillText, makeResolver, placeholderValues } from './placeholders';
@@ -83,6 +84,15 @@ describe('метки шаблонов', () => {
     expect(fillText('{Новое РО}', r.resolve)).toBe('РО Примерное');
   });
 
+  it('данные человека важнее глобальной переменной с тем же именем; переменная — для остального', () => {
+    const vars = [
+      { id: 'a', key: 'Фамилия', label: '', value: 'Из переменной', kind: 'text' as const, createdAt: '', updatedAt: '' },
+      { id: 'b', key: 'штаб', label: '', value: 'Штаб РО', kind: 'text' as const, createdAt: '', updatedAt: '' },
+    ];
+    const rr = makeResolver(placeholderValues({ fields: IVANOV }, caseOf('g1', IVANOV, {}), undefined, NOW), 'm', vars);
+    expect(fillText('{Фамилия} — {штаб}', rr.resolve)).toBe('Примеров — Штаб РО');
+  });
+
   it('пол неизвестен — обе формы', () => {
     expect(makeResolver(new Map(), null).resolve('он|она')).toBe('он/она');
   });
@@ -128,22 +138,17 @@ describe('проверки ручного ввода', () => {
 });
 
 describe('личная папка', () => {
-  it('имя папки по ФИО: без запрещённых символов, занятые — с номером', () => {
+  it('имя файла без запрещённых символов', () => {
     expect(safeName('Фамилия: "Имя"? ')).toBe('Фамилия_ _Имя__');
-    expect(folderNameFor(IVANOV)).toBe('Примеров Пример Примерович');
-    expect(folderNameFor({})).toBe('Без имени');
-    expect(folderNameFor({ 'person.lastName': 'Шаблоны' })).toBe('Шаблоны (боец)');
-    expect(uniqueName('Примеров', new Set(['примеров', 'Примеров (2)']))).toBe('Примеров (3)');
   });
 
-  it('перенос папки со всеми файлами', async () => {
-    const ws = new Workspace(new MemoryAdapter());
-    await ws.writeBytes('Личные дела/Старое/Сканы/a.pdf', 'pdf');
-    await ws.writeBytes('Личные дела/Старое/Фотографии/b.jpg', 'jpg');
-    await moveFolder(ws, 'Личные дела/Старое', 'Личные дела/Новое');
-    expect(await ws.readBytes('Личные дела/Старое/Сканы/a.pdf')).toBeNull();
-    expect(text((await ws.readBytes('Личные дела/Новое/Сканы/a.pdf'))!)).toBe('pdf');
-    expect(text((await ws.readBytes('Личные дела/Новое/Фотографии/b.jpg'))!)).toBe('jpg');
+  it('дело — раздел «Личных дел» в грамотке; папка — виртуальная папка грамотки', () => {
+    const c = caseOf('p1', IVANOV, { characteristic: 'Ответственный.' });
+    expect(c).toMatchObject({ personId: 'p1', folder: gramotkaPath('p1'), fio: 'Примеров Пример Примерович', achievements: [], transfers: [] });
+    // В грамотку уходит только своё — без номера, папки и ФИО (они берутся из грамотки).
+    expect(caseData(c)).not.toHaveProperty('fio');
+    expect(caseData(c)).not.toHaveProperty('folder');
+    expect(caseData(c).characteristic).toBe('Ответственный.');
   });
 });
 
@@ -179,10 +184,12 @@ describe('перевод', () => {
 
   async function setup() {
     const ws = new Workspace(new MemoryAdapter());
-    const c: PersonCase = { ...newCase('p1', 'Личные дела/Примеров Пример Примерович', 'Примеров Пример Примерович'), characteristic: 'Ответственный.', files: { 'Сканы/p1.jpg': { kind: 'Паспорт (разворот с фото)' } } };
-    await ws.writeBytes('Личные дела/Примеров Пример Примерович/Сканы/p1.jpg', new Uint8Array([0xff, 0xd8, 0xff, 0xd9]));
-    await ws.writeBytes('Личные дела/Примеров Пример Примерович/Сканы/снилс.pdf', '%PDF');
-    await ws.writeBytes('Личные дела/Примеров Пример Примерович/Фотографии/фото.jpg', new Uint8Array([0xff, 0xd8, 0xff, 0xd9]));
+    // Личная папка — виртуальная (как у открытой грамотки).
+    ws.mount(gramotkaPath('p1'), new MemoryAdapter());
+    const c: PersonCase = caseOf('p1', IVANOV, { characteristic: 'Ответственный.', files: { 'Сканы/p1.jpg': { kind: 'Паспорт (разворот с фото)' } } });
+    await ws.writeBytes(`${c.folder}/Сканы/p1.jpg`, new Uint8Array([0xff, 0xd8, 0xff, 0xd9]));
+    await ws.writeBytes(`${c.folder}/Сканы/снилс.pdf`, '%PDF');
+    await ws.writeBytes(`${c.folder}/Фотографии/фото.jpg`, new Uint8Array([0xff, 0xd8, 0xff, 0xd9]));
     // Свой шаблон Word с меткой.
     const doc = '<w:document xmlns:w="w"><w:body><w:p><w:r><w:t>Справка на {ФИО:кого}</w:t></w:r></w:p></w:body></w:document>';
     await ws.writeBytes('Личные дела/Шаблоны/Справка.docx', writeZip([{ path: 'word/document.xml', data: new TextEncoder().encode(doc) }]));
@@ -277,7 +284,7 @@ describe('имена сканов по шаблону', () => {
   });
 
   it('переименование файла переносит подпись, основное фото и ссылку достижения', () => {
-    const c = { ...newCase('p', 'x', 'x'), photo: 'Сканы/a.jpg', files: { 'Сканы/a.jpg': { kind: 'СНИЛС' } }, achievements: [{ id: '1', date: '', title: 't', file: 'Сканы/a.jpg' }] };
+    const c = { ...caseOf('p', {}, {}), photo: 'Сканы/a.jpg', files: { 'Сканы/a.jpg': { kind: 'СНИЛС' } }, achievements: [{ id: '1', date: '', title: 't', file: 'Сканы/a.jpg' }] };
     const r = renamedFile(c, 'Сканы/a.jpg', 'Сканы/b.jpg');
     expect(r.files).toEqual({ 'Сканы/b.jpg': { kind: 'СНИЛС' } });
     expect(r.photo).toBe('Сканы/b.jpg');

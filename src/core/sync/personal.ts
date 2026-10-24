@@ -6,7 +6,7 @@ import { mergeSeen } from '../registry/badges';
 import { APPS } from '../registry/apps';
 import type { SyncGroupDef } from '../registry/types';
 import { setThemePref, type ThemePref } from '../theme';
-import { keyFromPhrase, lockWithKey, rememberedKey, rememberKey, forgetKey, sameSalt, unlock, unlockWithKey, VaultError, type VaultKey } from '../vault/vault';
+import { keyFromPassword, lockWithKey, rememberedKey, rememberKey, forgetKey, sameSalt, unlock, unlockWithKey, VaultError, type VaultKey } from '../vault/vault';
 import { flushDocStores, reloadDocStore } from '../workspace/docStore';
 import type { Workspace } from '../workspace/workspace';
 import { applyPlan, conflictsFor, planSync, type LocalItem, type SyncBase, type SyncPayload } from './plan';
@@ -43,7 +43,6 @@ export function syncGroups(ws: Workspace | null): Group[] {
     { id: 'variables', title: 'Глобальные переменные', hint: 'Значения, которые подставляются по Ctrl+Пробел.', files: [sys('variables.json')], default: true },
     { id: 'base', title: 'База данных (древа)', hint: 'Адреса, должности и другие списки.', files: [], folder: sys('base'), default: true },
     ...APPS.flatMap((a) => a.syncGroups ?? []),
-    { id: 'people', title: 'База людей', hint: 'Паспортные и другие данные людей.', files: [sys('people.json')], personal: true },
     { id: 'suggest', title: 'Словарь подсказок', hint: 'Что вводили в поля (в том числе имена).', files: [sys('suggest.json')], personal: true },
   ];
   return groups;
@@ -259,7 +258,7 @@ export async function runSync(ws: Workspace, opts: SyncOptions = {}): Promise<Sy
     key = r.key;
   } else {
     if (!opts.phrase) return { kind: 'need-phrase', exists: false };
-    key = await keyFromPhrase(opts.phrase);
+    key = await keyFromPassword(opts.phrase);
   }
   if (opts.remember) await rememberKey(key);
 
@@ -289,7 +288,7 @@ export async function changePhrase(oldPhrase: string | null, newPhrase: string, 
   if (!file) throw new Error('На Google Диске ещё нет личных настроек.');
   const r = await readRemote(file, { key: await rememberedKey(), phrase: oldPhrase ?? undefined });
   if (!r) throw new Error('Введите нынешнюю фразу.');
-  const key = await keyFromPhrase(newPhrase);
+  const key = await keyFromPassword(newPhrase);
   await writeRemote(file, { ...r.payload, savedAt: makeStamp() }, key);
   await forgetKey();
   if (remember) await rememberKey(key);

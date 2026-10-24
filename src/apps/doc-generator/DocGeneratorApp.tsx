@@ -4,6 +4,7 @@ import { Link, useSearchParams } from 'react-router-dom';
 import { MASTER_EMAIL } from '@/content/help/manual';
 import { usePeople } from '@/core/people/people';
 import { Alert } from '@/ui/Alert';
+import { GramotkiNotice } from '@/ui/GramotkiGate';
 import { CARD_FIELDS, cardValues } from './member-card/fields';
 import { loadCardTemplate, type CardTemplate } from './member-card/template';
 import { CardEditor, type CardDraft } from './ui/CardEditor';
@@ -100,11 +101,14 @@ export default function DocGeneratorApp() {
         {templateError && <Alert kind="error">Не удалось открыть бланк карточки: {templateError}</Alert>}
 
         {!person ? (
-          <PeopleList records={people.records} loaded={people.loaded} drafts={edited} onOpen={(id) => open(id)} onNew={() => open(NEW)} />
+          <>
+            <GramotkiNotice text="Грамотки закрыты — люди из базы не видны. Карточку можно заполнить вручную или открыть грамотки." />
+            <PeopleList records={people.records} loaded={people.loaded} drafts={edited} onOpen={(id) => open(id)} onNew={() => open(NEW)} />
+          </>
         ) : person !== NEW && !record ? (
           people.loaded ? (
             <div className="card stack">
-              <p style={{ margin: 0 }}>Этого человека нет в базе людей — возможно, запись удалили.</p>
+              <p style={{ margin: 0 }}>{people.available ? 'Этого человека нет в базе людей — возможно, его удалили или передали другому мастеру.' : 'Грамотки закрыты — откройте их, чтобы увидеть этого человека.'}</p>
               <div>
                 <button className="btn" onClick={() => open(null)}>
                   К списку

@@ -1,4 +1,5 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
+import { gramotkiStore } from '../gramotka/store';
 import { BrowserAdapter } from '../storage/browserAdapter';
 import { ensurePermission, FsAccessAdapter, isFsAccessSupported, pickDirectory, type DirectoryHandle } from '../storage/fsAccess';
 import { kvDelete, kvGet, kvSet } from '../storage/idb';
@@ -44,8 +45,24 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
     const adapter = saved.kind === 'fs-access' ? new FsAccessAdapter(saved.handle) : new BrowserAdapter();
     const ws = new Workspace(adapter);
     await ws.init();
+    // Грамотки: прочитать папку, а если ключ запомнен — открыть в фоне, пока человек смотрит главную.
+    void gramotkiStore(ws).init();
     setStatus({ state: 'ready', ws });
   }, []);
+
+  // Уходят со страницы — сохранить грамотки.
+  useEffect(() => {
+    if (status.state !== 'ready') return;
+    const store = gramotkiStore(status.ws);
+    const flush = () => void store.flushAll();
+    const onHide = () => document.visibilityState === 'hidden' && flush();
+    window.addEventListener('pagehide', flush);
+    document.addEventListener('visibilitychange', onHide);
+    return () => {
+      window.removeEventListener('pagehide', flush);
+      document.removeEventListener('visibilitychange', onHide);
+    };
+  }, [status]);
 
   useEffect(() => {
     (async () => {
@@ -91,10 +108,11 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
   }, [pending, activate]);
 
   const close = useCallback(async () => {
+    if (status.state === 'ready') await gramotkiStore(status.ws).lock();
     await kvDelete(KEY);
     setPending(null);
     setStatus({ state: 'none' });
-  }, []);
+  }, [status]);
 
   const value = useMemo<Ctx>(
     () => ({

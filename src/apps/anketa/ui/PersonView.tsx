@@ -84,13 +84,18 @@ export function PersonView({ model, headers, originals, row, reviewed, readOnly,
 
   const checkActual = async () => {
     if (!workspace) return;
-    const r = await runPeopleCheck(workspace, [result], model, people.records, onConfirmMany);
+    if (!people.available && !(await people.open())) return;
+    const r = await runPeopleCheck(workspace, [result], model, people.current(), onConfirmMany);
     setCheck(r[0]);
   };
 
-  const saveToPeople = () => {
-    const how = people.save(personFields(values, model.columns), APP_ID);
-    toast(how === 'added' ? `${name}: сохранено в базу людей` : `${name}: запись в базе людей обновлена`);
+  const saveToPeople = async () => {
+    try {
+      const how = await people.save(personFields(values, model.columns), APP_ID);
+      toast(how === 'added' ? `${name}: сохранено в базу людей (новая грамотка)` : `${name}: запись в базе людей обновлена`);
+    } catch (e) {
+      toast(e instanceof Error ? e.message : String(e));
+    }
   };
 
   const fio = [values[model.columns.indexOf('person.lastName')], values[model.columns.indexOf('person.firstName')], values[model.columns.indexOf('person.middleName')]]
@@ -138,7 +143,7 @@ export function PersonView({ model, headers, originals, row, reviewed, readOnly,
           <button className="btn" onClick={checkActual} disabled={readOnly || !fio} data-tip="Найти человека в базе людей по ФИО и отметить совпавшие поля">
             <SearchCheck size={16} /> Проверить с актуальной информацией
           </button>
-          <button className="btn" onClick={saveToPeople} disabled={!result.ready || people.readOnly} data-tip={result.ready ? 'Сохранить проверенные данные в базу людей' : 'Сначала исправьте и подтвердите всё'}>
+          <button className="btn" onClick={() => void saveToPeople()} disabled={!result.ready} data-tip={result.ready ? 'Сохранить проверенные данные в базу людей' : 'Сначала исправьте и подтвердите всё'}>
             <UserPlus size={16} /> В базу людей
           </button>
           <button className="btn" onClick={() => setSaveVar({ value: fio, label: `ФИО: ${fio}`, kind: 'fio' })} disabled={!fio}>

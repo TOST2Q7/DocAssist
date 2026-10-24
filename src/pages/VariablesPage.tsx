@@ -138,14 +138,14 @@ function SuggestDictionary() {
   const [query, setQuery] = useState('');
   const groups = useMemo(() => {
     const q = query.trim().toLowerCase();
-    const m = new Map<string, typeof dict.items>();
-    for (const it of dict.items) {
+    const m = new Map<string, typeof dict.stored>();
+    for (const it of dict.stored) {
       if (q && !it.value.toLowerCase().includes(q)) continue;
       m.set(it.key, [...(m.get(it.key) ?? []), it]);
     }
     for (const list of m.values()) list.sort((a, b) => b.count - a.count || b.last.localeCompare(a.last));
     return [...m.entries()].sort((a, b) => b[1].length - a[1].length);
-  }, [dict.items, query]);
+  }, [dict.stored, query]);
   const title = (key: string) => FIELD_BY_ID.get(key)?.label ?? VAR_KINDS[key as VarKind]?.label ?? key;
 
   return (
@@ -153,7 +153,7 @@ function SuggestDictionary() {
       <div className="section-title">
         <h2>Словарь подсказок</h2>
         <span className="muted small">
-          {dict.items.length} {plural(dict.items.length, ['значение', 'значения', 'значений'])}
+          {dict.stored.length} {plural(dict.stored.length, ['значение', 'значения', 'значений'])}
         </span>
       </div>
       <p className="muted small" style={{ margin: 0 }}>
@@ -165,7 +165,7 @@ function SuggestDictionary() {
         <input type="checkbox" checked={dict.enabled} disabled={dict.readOnly} onChange={(e) => dict.setEnabled(e.target.checked)} /> Запоминать вводимое и
         подсказывать
       </label>
-      {dict.items.length > 0 && (
+      {dict.stored.length > 0 && (
         <div className="row">
           <input className="input" style={{ flex: '1 1 220px' }} placeholder="Поиск в словаре" value={query} onChange={(e) => setQuery(e.target.value)} aria-label="Поиск в словаре" />
           <button
@@ -197,7 +197,7 @@ function SuggestDictionary() {
           </div>
         </div>
       ))}
-      {!dict.items.length && <div className="card empty small">Пока пусто. Начните вводить значения в поля — они появятся здесь.</div>}
+      {!dict.stored.length && <div className="card empty small">Пока пусто. Начните вводить значения в поля — они появятся здесь.</div>}
     </section>
   );
 }

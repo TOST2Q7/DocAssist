@@ -7,7 +7,8 @@ import type { Workspace } from '../workspace/workspace';
 
 /*
  * «Для выдачи» — временная папка в рабочей папке для файлов, которые нужно куда-то отдать или загрузить
- * (сканы для штаба, документы для отправки). Отдали — очистили.
+ * (сканы для штаба, готовые документы, пакеты перевода). Файлы здесь не закрыты (в отличие от грамоток):
+ * отдали — очистили.
  *
  *   <Рабочая папка>/Для выдачи/…               ← сами файлы (видны в Проводнике)
  *   <Рабочая папка>/.docassist/handout.json    ← откуда каждый файл пришёл, чтобы его можно было вернуть
@@ -18,7 +19,7 @@ export const HANDOUT_FOLDER = 'Для выдачи';
 export interface HandoutItem {
   /** Имя файла в «Для выдачи». */
   name: string;
-  /** Откуда взят (путь в рабочей папке). */
+  /** Откуда взят (путь в рабочей папке; пусто — файл создан сразу здесь, например готовый документ). */
   from: string;
   /** Перемещён (в исходном месте его больше нет) или скопирован. */
   moved: boolean;
@@ -67,6 +68,17 @@ export async function putToHandout(ws: Workspace, from: string, opts: PutOptions
   await store.load();
   store.update((d) => ({ items: [...d.items.filter((x) => x.name !== name), item] }));
   return item;
+}
+
+/** Положить в «Для выдачи» новый файл (готовый документ). Возвращает имя (если занято — с номером). */
+export async function addToHandout(ws: Workspace, name: string, data: Uint8Array, opts: Pick<HandoutItem, 'source' | 'label' | 'who'> = {}): Promise<string> {
+  const free = await ws.freeName(HANDOUT_FOLDER, name);
+  await ws.writeBytes(joinPath(HANDOUT_FOLDER, free), data);
+  const item: HandoutItem = { name: free, from: '', moved: false, at: new Date().toISOString(), ...opts };
+  const store = handoutStore(ws);
+  await store.load();
+  store.update((d) => ({ items: [...d.items.filter((x) => x.name !== free), item] }));
+  return free;
 }
 
 /**

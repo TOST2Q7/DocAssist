@@ -2,6 +2,7 @@ import { ArrowRight, UserPlus } from 'lucide-react';
 import { useState } from 'react';
 import { findByFio, fioText, usePeople } from '@/core/people/people';
 import { Modal } from '@/ui/Modal';
+import { useToast } from '@/ui/Toast';
 import { APP_ID } from '../constants';
 import type { CasesApi } from '../model/cases';
 import { checkField } from '../model/validate';
@@ -12,6 +13,7 @@ import { checkField } from '../model/validate';
  */
 export function NewPersonDialog({ cases, onClose, onOpen }: { cases: CasesApi; onClose: () => void; onOpen: (id: string) => void }) {
   const people = usePeople();
+  const toast = useToast();
   const [fields, setFields] = useState<Record<string, string>>({ 'person.lastName': '', 'person.firstName': '', 'person.middleName': '', 'person.birthDate': '' });
   const [busy, setBusy] = useState(false);
   const set = (id: string, v: string) => setFields((f) => ({ ...f, [id]: v }));
@@ -23,9 +25,11 @@ export function NewPersonDialog({ cases, onClose, onOpen }: { cases: CasesApi; o
     if (!canCreate) return;
     setBusy(true);
     try {
-      const id = people.put(trimmed, APP_ID);
+      const id = await people.add(trimmed, APP_ID);
       await cases.ensure(id, trimmed);
       onOpen(id);
+    } catch (e) {
+      toast(e instanceof Error ? e.message : String(e));
     } finally {
       setBusy(false);
     }
@@ -77,8 +81,8 @@ export function NewPersonDialog({ cases, onClose, onOpen }: { cases: CasesApi; o
         }}
       >
         <p className="small muted" style={{ margin: 0 }}>
-          Человек добавится в базу людей (её видят все приложения), и для него создастся личная папка «Личные дела/{fioText(trimmed) || 'ФИО'}» с
-          разделами для фото, сканов, достижений и характеристики. Остальные данные — на следующем шаге.
+          Для человека создастся гра́мотка — закрытая папка с его данными (их видят все приложения), фото, сканами, достижениями и характеристикой.
+          Остальные данные — на следующем шаге.
         </p>
         <div className="grid-2">
           {input('person.lastName', 'Фамилия')}

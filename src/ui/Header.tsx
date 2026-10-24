@@ -5,6 +5,7 @@ import { useOutbox } from '@/core/outbox/outbox';
 import { useTheme } from '@/core/theme';
 import { useUpdateCheck } from '@/core/update/checkUpdate';
 import { BurgerMenu } from './BurgerMenu';
+import { GramotkiButton } from './GramotkiButton';
 import { Logo } from './Logo';
 import { useSection } from './section';
 
@@ -68,6 +69,7 @@ export function Header() {
           </span>
         )}
         <div className="header__spacer" />
+        <GramotkiButton />
         <Link to="/faq" className="icon-btn" data-tip="Частые вопросы" aria-label="Частые вопросы">
           <CircleHelp size={20} />
         </Link>

@@ -448,3 +448,20 @@
   border-color: var(--brand);
   background: var(--brand-soft);
 }
+
+/* Временный ключ перевода — крупно, чтобы легко продиктовать. */
+.transfer-key {
+  border: 1px solid var(--brand);
+}
+.transfer-key__code {
+  font-size: 2rem;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  color: var(--brand);
+}
+.incoming__code {
+  max-width: 12ch;
+  font-size: 1.4rem;
+  letter-spacing: 0.2em;
+  font-family: var(--font-mono, monospace);
+}

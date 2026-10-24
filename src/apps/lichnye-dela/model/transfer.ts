@@ -9,7 +9,7 @@ import { writeXlsxBook, type SheetData } from '@/core/tables/tables';
 import { writeZip } from '@/core/util/zip';
 import type { Variable } from '@/core/variables/types';
 import type { Workspace } from '@/core/workspace/workspace';
-import { SECTION_BY_ID, TRANSFERS_FOLDER, WORD_TEMPLATES_FOLDER, type SectionId } from '../constants';
+import { SECTION_BY_ID, WORD_TEMPLATES_FOLDER, type SectionId } from '../constants';
 import { cardDocx } from './card';
 import { casePath, safeName, type PersonCase, type TransferRecord, type TransferSide } from './cases';
 import { shortFio } from './names';
@@ -18,8 +18,8 @@ import { templateDocx, type TextTemplate } from './templates';
 
 /*
  * Перевод бойца (или нескольких сразу): пакет документов, таблица со всеми данными, фото и сканы.
- * Пакет сохраняется в личную папку («Перевод ГГГГ-ММ-ДД»; если бойцов несколько — в «Личные дела/Переводы»)
- * и скачивается одним архивом.
+ * Пакет — один архив: скачивается и кладётся в «Для выдачи». Грамотка бойца передаётся новому мастеру отдельно
+ * (файл и временный ключ, src/core/gramotka).
  */
 
 export type TransferForm = TransferValues;
@@ -291,25 +291,6 @@ export async function buildTransferPackage(input: PackageInput): Promise<Package
     files.push({ path: 'Опись документов.docx', data: docx, title: 'Опись документов' });
   }
   return { name, files, warnings };
-}
-
-/** Где сохранить пакет: в личной папке (один боец) или в «Личные дела/Переводы». */
-export function packageFolder(people: TransferPerson[], name: string): string {
-  const c = people.length === 1 ? people[0].case : undefined;
-  return c ? joinPath(c.folder, name) : joinPath(TRANSFERS_FOLDER, safeName(name));
-}
-
-/** Свободное имя папки пакета (если в этот день уже собирали). */
-export async function freeFolder(ws: Workspace, folder: string): Promise<string> {
-  if (!(await ws.list(folder)).length) return folder;
-  for (let i = 2; ; i++) {
-    const next = `${folder} (${i})`;
-    if (!(await ws.list(next)).length) return next;
-  }
-}
-
-export async function savePackage(ws: Workspace, folder: string, files: PackageFile[]): Promise<void> {
-  for (const f of files) await ws.writeBytes(joinPath(folder, f.path), f.data);
 }
 
 export function zipPackage(files: PackageFile[]): Uint8Array {

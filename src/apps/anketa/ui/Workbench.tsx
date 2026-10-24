@@ -7,6 +7,7 @@ import type { TableData } from '@/core/tables/tables';
 import { plural } from '@/core/util/format';
 import { useWorkspace } from '@/core/workspace/WorkspaceContext';
 import { Alert } from '@/ui/Alert';
+import { GramotkiNotice } from '@/ui/GramotkiGate';
 import { useToast } from '@/ui/Toast';
 import { APP_ID } from '../constants';
 import { editCount } from '../model/session';
@@ -91,21 +92,27 @@ function Loaded({ path, row, onRow, onSheet, onClose, table, size, lastModified 
 
   const checkAll = async () => {
     if (!workspace) return;
-    if (!people.records.length) {
+    if (!people.available && !(await people.open())) return;
+    const records = people.current();
+    if (!records.length) {
       toast('База людей пока пустая — сравнивать не с чем');
       return;
     }
-    setCheck(await runPeopleCheck(workspace, model.results, model, people.records, s.confirmMany));
+    setCheck(await runPeopleCheck(workspace, model.results, model, records, s.confirmMany));
   };
 
-  const saveReady = () => {
+  const saveReady = async () => {
     let added = 0;
     let updated = 0;
-    for (const r of ready) {
-      if (people.save(personFields(model.values[r.row], model.columns), APP_ID) === 'added') added++;
-      else updated++;
+    try {
+      for (const r of ready) {
+        if ((await people.save(personFields(model.values[r.row], model.columns), APP_ID)) === 'added') added++;
+        else updated++;
+      }
+      toast(`База людей: добавлено ${added}, обновлено ${updated}`);
+    } catch (e) {
+      toast(added + updated ? `База людей: добавлено ${added}, обновлено ${updated}. ${e instanceof Error ? e.message : String(e)}` : e instanceof Error ? e.message : String(e));
     }
-    toast(`База людей: добавлено ${added}, обновлено ${updated}`);
   };
 
   if (row !== null && row >= 0 && row < model.results.length) {
@@ -157,6 +164,7 @@ function Loaded({ path, row, onRow, onSheet, onClose, table, size, lastModified 
           </select>
         )}
       </div>
+      <GramotkiNotice text="Грамотки закрыты — «уже есть у другого человека» сверяется только с этой таблицей, а не с базой людей." />
       <GoogleSheetBar path={path} table={table} columns={model.columns} names={model.names} s={s} />
       <div className="row toolbar">
         <button className="btn" onClick={() => setFixAll(allChanges())} disabled={s.readOnly}>
@@ -168,7 +176,7 @@ function Loaded({ path, row, onRow, onSheet, onClose, table, size, lastModified 
         <button className="btn" onClick={checkAll} disabled={s.readOnly}>
           <SearchCheck size={16} /> Проверить всех с актуальной информацией
         </button>
-        <button className="btn" onClick={saveReady} disabled={!ready.length || people.readOnly} data-tip="Сохранить готовые анкеты в базу людей">
+        <button className="btn" onClick={() => void saveReady()} disabled={!ready.length} data-tip="Сохранить готовые анкеты в базу людей">
           <UserPlus size={16} /> Готовых в базу людей ({ready.length})
         </button>
         <button

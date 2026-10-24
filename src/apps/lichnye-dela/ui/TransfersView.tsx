@@ -18,7 +18,7 @@ export function useApplyTransfer(cases: CasesApi) {
     for (const id of personIds) {
       const r = people.records.find((x) => x.id === id);
       if (!r) continue;
-      people.put(applyTransfer(r.fields, transfer.to), APP_ID, id);
+      people.put(id, applyTransfer(r.fields, transfer.to), APP_ID);
       cases.setTransferStatus(id, transfer.id, 'done');
       n++;
     }
@@ -26,12 +26,18 @@ export function useApplyTransfer(cases: CasesApi) {
   };
 }
 
-/** Скачать папку пакета одним архивом. */
+/** Скачать пакет: архив из «Для выдачи» (или папку пакета одним архивом). */
 export function useDownloadFolder() {
   const { workspace } = useWorkspace();
   const toast = useToast();
   return async (folder: string, name: string) => {
     if (!workspace) return;
+    if (folder.toLowerCase().endsWith('.zip')) {
+      const bytes = await workspace.readBytes(folder).catch(() => null);
+      if (bytes) downloadBytes(bytes, `${safeName(name)}.zip`, 'application/zip');
+      else toast('Архива пакета уже нет в «Для выдачи» — соберите пакет заново');
+      return;
+    }
     const files = await listAllFiles(workspace, folder);
     if (!files.length) {
       toast('Папка пакета пуста или удалена');
@@ -65,7 +71,7 @@ export function TransfersView({ record, cases, onTransfer }: { record: PersonRec
             <div className="small muted">
               Сейчас: {squad ? `отряд ${squad}` : 'отряд не указан'}
               {record.fields['rso.branch'] ? `, ${record.fields['rso.branch']}` : ''}. Документы о переводе, таблица со всеми данными, фото 3×4 и сканы —
-              одним архивом и в личную папку.
+              одним архивом в «Для выдачи». Грамотку можно сразу передать новому мастеру по временному ключу.
             </div>
           </div>
           <button className="btn btn--primary" onClick={onTransfer} disabled={cases.readOnly}>
@@ -115,7 +121,7 @@ export function TransfersView({ record, cases, onTransfer }: { record: PersonRec
                 <button
                   className="btn btn--sm btn--ghost"
                   disabled={cases.readOnly}
-                  onClick={() => confirm('Удалить запись о переводе из истории?\nПапка с документами останется.') && cases.removeTransfer(record.id, t.id)}
+                  onClick={() => confirm('Удалить запись о переводе из истории?\nАрхив с документами (если он ещё в «Для выдачи») останется.') && cases.removeTransfer(record.id, t.id)}
                 >
                   <Trash2 size={14} /> Удалить запись
                 </button>

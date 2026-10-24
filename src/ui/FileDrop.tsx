@@ -1,14 +1,20 @@
 import { Upload } from 'lucide-react';
 import { Suspense, useCallback, useEffect, useState } from 'react';
+import { useGramotki } from '@/core/gramotka/react';
+import { errorText, KEY_FILE_EXT } from '@/core/gramotka/store';
 import { APPS } from '@/core/registry/apps';
 import { Emitter } from '@/core/util/events';
+import { showGramotki } from './GramotkiDialog';
 import { useToast } from './Toast';
 
 /*
  * Файлы можно перетащить в любое место окна. Пока файл над окном — затемнение с подсказкой,
  * после отпускания — окно приложения, которое разбирает файлы (manifest.fileDrop: «Личные дела» —
  * что за файл, на чьё имя закрепить, как назвать). Кнопкой то же окно открывает openIncomingFiles().
+ * Файл ключа грамоток разбирает само ядро: открывает грамотки вместо ввода фразы.
  */
+
+const isKeyFile = (f: File) => f.name.toLowerCase().endsWith(`.${KEY_FILE_EXT}`);
 
 const handler = APPS.find((a) => a.fileDrop)?.fileDrop;
 const incoming = new Emitter<File[]>();
@@ -39,6 +45,7 @@ function droppedFiles(dt: DataTransfer): { files: File[]; folders: number } {
 
 export function FileDrop() {
   const toast = useToast();
+  const { store } = useGramotki();
   const [dragging, setDragging] = useState(false);
   const [queue, setQueue] = useState<File[]>([]);
 
@@ -67,14 +74,28 @@ export function FileDrop() {
       setDragging(false);
       const { files, folders } = droppedFiles(e.dataTransfer);
       if (folders) toast('Папки не добавляются — перетащите сами файлы');
-      openIncomingFiles(files);
+      const key = files.find(isKeyFile);
+      if (key && store) {
+        const st = store.snapshot().status;
+        if (st === 'open') toast('Грамотки уже открыты');
+        else if (st === 'new') showGramotki.emit();
+        else
+          void key
+            .arrayBuffer()
+            .then((b) => store.unlockWithKeyFile(new Uint8Array(b), false))
+            .then(
+              () => toast('Грамотки открыты файлом ключа'),
+              (err: unknown) => toast(errorText(err)),
+            );
+      }
+      openIncomingFiles(files.filter((f) => !isKeyFile(f)));
     };
     const handlers = { dragstart: onStart, dragend: onEnd, dragenter: onEnter, dragover: onOver, drop: onDrop };
     for (const [type, fn] of Object.entries(handlers)) window.addEventListener(type, fn as EventListener);
     return () => {
       for (const [type, fn] of Object.entries(handlers)) window.removeEventListener(type, fn as EventListener);
     };
-  }, [toast]);
+  }, [toast, store]);
 
   const close = useCallback(() => setQueue([]), []);
 

@@ -6,6 +6,7 @@ import { APPS } from '@/core/registry/apps';
 import { fieldLabel } from '@/core/schema/fields';
 import { formatDateTime } from '@/core/util/format';
 import { ABBR_GROUPS, ABBREVIATIONS } from '@/shared/cell/abbr';
+import { GramotkiNotice } from '@/ui/GramotkiGate';
 import { useToast } from '@/ui/Toast';
 import { WorkspaceGate } from '@/ui/WorkspaceGate';
 
@@ -28,9 +29,10 @@ function PeopleBase() {
       <p className="muted small" style={{ margin: 0 }}>
         Проверенные («актуальные») данные людей. По ним работает кнопка «Проверить с актуальной информацией» и проверка
         уникальности: значение, которое уже есть у другого человека, — ошибка. Пополняется из «Проверки анкет» (готовые анкеты) и
-        вручную в «Личных делах», а «Генератор документов» дописывает то, чего не хватило для документа. Это персональные данные — в
-        «Предложения в базу» они не попадают.
+        вручную в «Личных делах», а «Генератор документов» дописывает то, чего не хватило для документа. Каждый человек — своя гра́мотка:
+        данные закрыты фразой и видны, только пока грамотки открыты. В «Предложения в базу» они не попадают.
       </p>
+      <GramotkiNotice text="Грамотки закрыты — данные людей не видны." />
       {people.records.length > 5 && (
         <div className="search-box">
           <Search size={16} className="faint" />
@@ -53,9 +55,8 @@ function PeopleBase() {
                 <button
                   className="icon-btn"
                   onClick={() => {
-                    if (confirm(`Удалить «${fioText(r.fields)}» из базы людей?`)) {
-                      people.remove(r.id);
-                      toast('Удалено');
+                    if (confirm(`Удалить «${fioText(r.fields)}» насовсем — вместе с грамоткой (все данные, фото, сканы)?`)) {
+                      void people.remove(r.id).then(() => toast('Удалено'));
                     }
                   }}
                   aria-label={`Удалить ${fioText(r.fields)}`}

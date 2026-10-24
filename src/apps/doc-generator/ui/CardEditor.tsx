@@ -6,7 +6,8 @@ import { formatDateTime } from '@/core/util/format';
 import { useWorkspace } from '@/core/workspace/WorkspaceContext';
 import { Alert } from '@/ui/Alert';
 import { useToast } from '@/ui/Toast';
-import { APP_ID, CARDS_FOLDER } from '../constants';
+import { addToHandout, HANDOUT_FOLDER } from '@/core/handout/handout';
+import { APP_ID } from '../constants';
 import { CARD_FIELDS, CARD_SECTIONS, cardFileName, cardValues, fullName, missingFields, type CardField, type CardValues } from '../member-card/fields';
 import { cellsFor, fillMemberCard, MAILING_MARKS, placeText, type Placed } from '../member-card/fill';
 import { INSTITUTIONS } from '@/content/help/institutions';
@@ -188,17 +189,21 @@ export function CardEditor({ record, draft, onDraft, template, onBack, onAdded }
     el?.focus({ preventScroll: true });
   };
 
-  const saveToBase = (chosen: BaseChange[]) => {
+  const saveToBase = async (chosen: BaseChange[]) => {
     const fields = Object.fromEntries(chosen.map((c) => [c.id, c.to]));
-    if (record) {
-      people.complete(record.id, fields);
-      toast(`Дописано в базу людей: ${chosen.map((c) => c.label).join(', ')}`);
-    } else {
-      const r = people.upsert(fields, APP_ID);
-      toast(r.how === 'added' ? `${name}: добавлено в базу людей` : `${name}: запись в базе людей дополнена`);
-      onAdded(r.id);
+    try {
+      if (record) {
+        people.complete(record.id, fields);
+        toast(`Дописано в базу людей: ${chosen.map((c) => c.label).join(', ')}`);
+      } else {
+        const r = await people.upsert(fields, APP_ID);
+        toast(r.how === 'added' ? `${name}: добавлено в базу людей (новая грамотка)` : `${name}: запись в базе людей дополнена`);
+        onAdded(r.id);
+      }
+      setSaveOpen(false);
+    } catch (e) {
+      toast(e instanceof Error ? e.message : String(e));
     }
-    setSaveOpen(false);
   };
 
   const generate = async () => {
@@ -207,11 +212,10 @@ export function CardEditor({ record, draft, onDraft, template, onBack, onAdded }
     setBusy(true);
     try {
       const bytes = await fillMemberCard(template.bytes, values, { mark: mailing ? settings.mark : MAILING_MARKS.none });
-      const file = cardFileName(values);
-      await workspace.writeBytes(`${CARDS_FOLDER}/${file}`, bytes);
+      const file = await addToHandout(workspace, cardFileName(values), bytes, { source: APP_ID, label: 'Учетная карточка', who: name });
       downloadBytes(bytes, file, mimeFor(file));
-      const offer = added.length && !people.readOnly && (record || canAdd);
-      toast(`Готово: «${CARDS_FOLDER}/${file}»`, offer ? { label: 'Дописать в базу', run: () => setSaveOpen(true) } : undefined);
+      const offer = added.length && (record || canAdd);
+      toast(`Готово: «${HANDOUT_FOLDER}/${file}»`, offer ? { label: 'Дописать в базу', run: () => setSaveOpen(true) } : undefined);
     } catch (e) {
       toast(`Не удалось сформировать карточку: ${e instanceof Error ? e.message : String(e)}`);
     } finally {
@@ -240,7 +244,7 @@ export function CardEditor({ record, draft, onDraft, template, onBack, onAdded }
           <button
             className="btn"
             onClick={() => setSaveOpen(true)}
-            disabled={!changes.length || people.readOnly || (!record && !canAdd)}
+            disabled={!changes.length || (!record && !canAdd)}
             data-tip={!record && !canAdd ? 'Сначала впишите фамилию и имя' : record ? 'Записать вписанное в базу людей' : 'Сохранить человека в базу людей'}
           >
             <DatabaseZap size={16} /> {record ? 'Дописать в базу' : 'Сохранить в базу'} ({changes.length})
@@ -267,7 +271,7 @@ export function CardEditor({ record, draft, onDraft, template, onBack, onAdded }
       ) : (
         <Alert kind="success">
           Всё для карточки есть.
-          {added.length > 0 && !people.readOnly && ` Вписанное (${added.map((c) => c.label).join(', ')}) можно дописать в базу людей.`}
+          {added.length > 0 && ` Вписанное (${added.map((c) => c.label).join(', ')}) можно дописать в базу людей.`}
         </Alert>
       )}
 
@@ -330,7 +334,7 @@ export function CardEditor({ record, draft, onDraft, template, onBack, onAdded }
       </div>
 
       {saveOpen && (
-        <SaveToBaseDialog name={name || 'Новый человек'} isNew={!record} changes={changes} onClose={() => setSaveOpen(false)} onSave={saveToBase} />
+        <SaveToBaseDialog name={name || 'Новый человек'} isNew={!record} changes={changes} onClose={() => setSaveOpen(false)} onSave={(c) => void saveToBase(c)} />
       )}
     </div>
   );

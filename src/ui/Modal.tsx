@@ -10,9 +10,11 @@ interface Props {
   wide?: boolean;
   /** Свой класс окна — например, для своей ширины. */
   className?: string;
+  /** Поверх другого окна (например, ввод фразы, пока открыто окно приложения): плотный фон, нижнее окно не просвечивает. */
+  top?: boolean;
 }
 
-export function Modal({ title, onClose, children, footer, wide, className }: Props) {
+export function Modal({ title, onClose, children, footer, wide, className, top }: Props) {
   const titleId = useId();
   const ref = useRef<HTMLDivElement>(null);
 
@@ -32,7 +34,7 @@ export function Modal({ title, onClose, children, footer, wide, className }: Pro
   }, [onClose]);
 
   return createPortal(
-    <div className="modal-overlay" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
+    <div className={`modal-overlay ${top ? 'modal-overlay--top' : ''}`} onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
       <div ref={ref} className={`modal ${wide ? 'modal--wide' : ''} ${className ?? ''}`} role="dialog" aria-modal="true" aria-labelledby={titleId}>
         <div className="modal__head">
           <h2 id={titleId}>{title}</h2>

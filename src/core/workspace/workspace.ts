@@ -12,7 +12,8 @@ import { joinPath, type FsEntry, type StorageAdapter } from '../storage/types';
  *       variables.json            ← глобальные переменные
  *       outbox.json               ← предложения в общую базу
  *       base/*.json               ← база данных: древа «ключ:значение» («Адреса.json»…)
- *       people.json               ← база людей (проверенные данные)
+ *       owner.bin                 ← кто ведёт грамотки (закрыто фразой)
+ *     Грамотки/                   ← база людей: у каждого человека своя грамотка (src/core/gramotka)
  *     Анкеты 2025.xlsx            ← общие файлы пользователя (видны всем приложениям)
  *     Проверка анкет/             ← папка приложения: его правила, сеансы, результаты
  *     <Другое приложение>/
@@ -65,11 +66,45 @@ export function uniqueFileName(name: string, takenLower: Set<string>): string {
   }
 }
 
+/**
+ * Виртуальные папки: пути «@грамотки/<номер>/…» ведут не в рабочую папку, а внутрь грамотки (src/core/gramotka).
+ * Поэтому приложения работают с папкой человека так же, как с любой папкой: читают, пишут, переносят в «Для выдачи».
+ */
+export const MOUNT_ROOT = '@грамотки';
+
 export class Workspace {
   readonly changes = new Emitter<ChangeEvent>();
   info: WorkspaceInfo | null = null;
+  private mounts = new Map<string, StorageAdapter>();
 
   constructor(readonly adapter: StorageAdapter) {}
+
+  /** Подключить виртуальную папку (путь вида «@грамотки/<номер>»). */
+  mount(prefix: string, adapter: StorageAdapter): void {
+    this.mounts.set(joinPath(prefix), adapter);
+  }
+
+  unmount(prefix: string): void {
+    this.mounts.delete(joinPath(prefix));
+  }
+
+  /** Отключить все виртуальные папки (грамотки закрыты). */
+  unmountAll(): void {
+    this.mounts.clear();
+  }
+
+  /** Где на самом деле лежит путь: в рабочей папке или в виртуальной папке. */
+  private route(path: string): { adapter: StorageAdapter; rel: string; mounted: boolean } {
+    const p = joinPath(path);
+    if (p === MOUNT_ROOT || p.startsWith(`${MOUNT_ROOT}/`)) {
+      const parts = p.split('/');
+      const prefix = parts.slice(0, 2).join('/');
+      const adapter = this.mounts.get(prefix);
+      if (!adapter) throw new Error(parts.length < 2 ? 'Это не папка.' : 'Грамотка закрыта или её нет: откройте грамотки.');
+      return { adapter, rel: parts.slice(2).join('/'), mounted: true };
+    }
+    return { adapter: this.adapter, rel: p, mounted: false };
+  }
 
   get kind() {
     return this.adapter.kind;
@@ -90,27 +125,36 @@ export class Workspace {
     return joinPath(SYSTEM_DIR, ...parts);
   }
 
-  list(path = ''): Promise<FsEntry[]> {
-    return this.adapter.list(path);
+  async list(path = ''): Promise<FsEntry[]> {
+    const p = joinPath(path);
+    if (p === MOUNT_ROOT) return [...this.mounts.keys()].map((k) => ({ name: k.split('/')[1], path: k, kind: 'directory' as const }));
+    const r = this.route(p);
+    const list = await r.adapter.list(r.rel);
+    if (!r.mounted) return p ? list : list.filter((e) => e.name !== MOUNT_ROOT);
+    const base = p.split('/').slice(0, 2).join('/');
+    return list.map((e) => ({ ...e, path: joinPath(base, e.path) }));
   }
 
-  readBytes(path: string) {
-    return this.adapter.readFile(path);
+  async readBytes(path: string): Promise<Uint8Array | null> {
+    const r = this.route(path);
+    return r.adapter.readFile(r.rel);
   }
 
-  stat(path: string) {
-    return this.adapter.stat(path);
+  async stat(path: string) {
+    const r = this.route(path);
+    return r.adapter.stat(r.rel);
   }
 
   async writeBytes(path: string, data: Uint8Array | string): Promise<void> {
-    await this.adapter.writeFile(path, data);
-    this.changes.emit({ path, action: 'write' });
+    const r = this.route(path);
+    await r.adapter.writeFile(r.rel, data);
+    this.changes.emit({ path: joinPath(path), action: 'write' });
   }
 
   /** Перенести файл (у хранилищ нет переименования: копируем и удаляем исходный). */
   async moveFile(from: string, to: string): Promise<void> {
     if (joinPath(from) === joinPath(to)) return;
-    const data = await this.adapter.readFile(from);
+    const data = await this.readBytes(from);
     if (!data) throw new Error(`Файл не найден: ${from}`);
     await this.writeBytes(to, data);
     await this.remove(from);
@@ -118,22 +162,24 @@ export class Workspace {
 
   /** Свободное имя в папке: «скан.jpg», «скан (2).jpg»… Символы, запрещённые в именах файлов, заменяются на «_». */
   async freeName(folder: string, name: string, also: Iterable<string> = []): Promise<string> {
-    const taken = new Set([...(await this.adapter.list(folder)).map((e) => e.name), ...also].map((n) => n.toLowerCase()));
+    const taken = new Set([...(await this.list(folder)).map((e) => e.name), ...also].map((n) => n.toLowerCase()));
     return uniqueFileName(name, taken);
   }
 
   async mkdir(path: string): Promise<void> {
-    await this.adapter.mkdir(path);
-    this.changes.emit({ path, action: 'write' });
+    const r = this.route(path);
+    await r.adapter.mkdir(r.rel);
+    this.changes.emit({ path: joinPath(path), action: 'write' });
   }
 
   async remove(path: string): Promise<void> {
-    await this.adapter.remove(path);
-    this.changes.emit({ path, action: 'remove' });
+    const r = this.route(path);
+    await r.adapter.remove(r.rel);
+    this.changes.emit({ path: joinPath(path), action: 'remove' });
   }
 
   async readJson(path: string): Promise<unknown | undefined> {
-    const bytes = await this.adapter.readFile(path);
+    const bytes = await this.readBytes(path);
     if (!bytes) return undefined;
     const text = decoder.decode(bytes).replace(/^﻿/, '');
     return JSON.parse(text);

@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { HANDOUT_FOLDER } from '@/core/handout/handout';
-import { Alert } from '@/ui/Alert';
+import { usePeople } from '@/core/people/people';
 import { DriveView } from './drive/DriveView';
 import { useCases } from './model/cases';
 import { HandoutView } from './ui/HandoutView';
@@ -21,6 +21,7 @@ import './dela.css';
 export default function LichnyeDelaApp() {
   const [params, setParams] = useSearchParams();
   const cases = useCases();
+  const people = usePeople();
   const [creating, setCreating] = useState(false);
   const [transfer, setTransfer] = useState<string[] | null>(null);
 
@@ -63,7 +64,6 @@ export default function LichnyeDelaApp() {
           </button>
         </div>
       </div>
-      {cases.error && <Alert kind="error">{cases.error}</Alert>}
       {view === 'templates' ? (
         <TemplatesView />
       ) : view === 'handout' ? (
@@ -83,7 +83,13 @@ export default function LichnyeDelaApp() {
           onTransfer={setTransfer}
         />
       ) : (
-        <PeopleView cases={cases} onOpen={(id) => set({ p: id, tab: null })} onNew={() => setCreating(true)} onTransfer={setTransfer} />
+        <PeopleView
+          cases={cases}
+          onOpen={(id) => set({ p: id, tab: null })}
+          // Сначала грамотки (фраза), потом окно нового бойца — чтобы окна не ложились одно на другое.
+          onNew={() => void people.open().then((ok) => ok && setCreating(true))}
+          onTransfer={setTransfer}
+        />
       )}
       {creating && (
         <NewPersonDialog

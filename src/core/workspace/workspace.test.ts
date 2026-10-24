@@ -46,3 +46,47 @@ describe('рабочая папка', () => {
     expect(text(ws, 'list.json')).toBe('{ это не JSON');
   });
 });
+
+describe('виртуальные папки (папка человека в грамотке)', () => {
+  async function setup() {
+    const ws = new Workspace(new MemoryAdapter());
+    await ws.init();
+    const inner = new MemoryAdapter();
+    ws.mount('@грамотки/g1', inner);
+    return { ws, inner };
+  }
+
+  it('пути «@грамотки/<номер>/…» ведут в подключённую папку; в списке рабочей папки её нет', async () => {
+    const { ws, inner } = await setup();
+    await ws.writeBytes('@грамотки/g1/Сканы/a.jpg', 'скан');
+    expect(inner.files.has('Сканы/a.jpg')).toBe(true);
+    expect((ws.adapter as MemoryAdapter).files.has('@грамотки/g1/Сканы/a.jpg')).toBe(false);
+    expect(await ws.list('@грамотки/g1')).toEqual([{ name: 'Сканы', path: '@грамотки/g1/Сканы', kind: 'directory' }]);
+    expect((await ws.list('@грамотки/g1/Сканы'))[0]).toMatchObject({ name: 'a.jpg', path: '@грамотки/g1/Сканы/a.jpg', kind: 'file' });
+    expect(await ws.list('@грамотки')).toEqual([{ name: 'g1', path: '@грамотки/g1', kind: 'directory' }]);
+    expect((await ws.list('')).map((e) => e.name)).toEqual(['.docassist']);
+  });
+
+  it('перенос между рабочей папкой и виртуальной, удаление, события изменений с полным путём', async () => {
+    const { ws, inner } = await setup();
+    const events: string[] = [];
+    ws.changes.on((e) => events.push(`${e.action}:${e.path}`));
+    await ws.writeBytes('Для выдачи/x.pdf', 'pdf');
+    await ws.moveFile('Для выдачи/x.pdf', '@грамотки/g1/x.pdf');
+    expect(await ws.readBytes('Для выдачи/x.pdf')).toBeNull();
+    expect(new TextDecoder().decode((await ws.readBytes('@грамотки/g1/x.pdf'))!)).toBe('pdf');
+    await ws.remove('@грамотки/g1/x.pdf');
+    expect(inner.files.size).toBe(0);
+    expect(events).toContain('write:@грамотки/g1/x.pdf');
+    expect(events).toContain('remove:@грамотки/g1/x.pdf');
+    expect(await ws.freeName('@грамотки/g1', 'x.pdf')).toBe('x.pdf');
+  });
+
+  it('закрытая (отключённая) грамотка — понятная ошибка, а не запись в рабочую папку', async () => {
+    const { ws } = await setup();
+    ws.unmount('@грамотки/g1');
+    await expect(ws.writeBytes('@грамотки/g1/a.txt', 'x')).rejects.toThrow(/откройте грамотки/);
+    await expect(ws.readBytes('@грамотки/g2/a.txt')).rejects.toThrow(/закрыта/);
+    expect((ws.adapter as MemoryAdapter).files.has('@грамотки/g1/a.txt')).toBe(false);
+  });
+});

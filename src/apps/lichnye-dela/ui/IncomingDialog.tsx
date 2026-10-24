@@ -1,23 +1,27 @@
-import { Award, Camera, Check, File as FileIcon, FileSpreadsheet, Folder, Loader2, PenLine, ScanLine, Search, UserPlus, UserX, type LucideIcon } from 'lucide-react';
+import { Award, Camera, Check, File as FileIcon, FileKey, FileSpreadsheet, Folder, Loader2, PenLine, ScanLine, Search, UserPlus, UserX, type LucideIcon } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { gramotkaPath } from '@/core/gramotka/store';
 import { fioText, usePeople } from '@/core/people/people';
 import type { FileDropProps } from '@/core/registry/types';
 import { extName, joinPath, splitPath } from '@/core/storage/types';
+import { MOUNT_ROOT } from '@/core/workspace/workspace';
 import { formatBytes, plural } from '@/core/util/format';
 import { useVariables } from '@/core/variables/variables';
 import { useWorkspace } from '@/core/workspace/WorkspaceContext';
 import { Alert } from '@/ui/Alert';
 import { Modal } from '@/ui/Modal';
 import { useToast } from '@/ui/Toast';
+import { GramotkiNotice } from '@/ui/GramotkiGate';
 import { WorkspaceChooser } from '@/ui/WorkspaceGate';
-import { ACHIEVEMENT_LEVELS, APP_FOLDER, APP_ID, guessScanKind, SCAN_KINDS } from '../constants';
-import { folderNameFor, useCases } from '../model/cases';
+import { ACHIEVEMENT_LEVELS, APP_ID, guessScanKind, SCAN_KINDS } from '../constants';
+import { useCases } from '../model/cases';
 import { fileStem, fioFields, guessIncomingKind, INCOMING_KIND_BY_ID, INCOMING_KINDS, sectionFolder, strongGuess, type IncomingKind } from '../model/incoming';
 import { personGender, placeholderValues } from '../model/placeholders';
 import { scanName } from '../model/scanNames';
 import { useTemplates } from '../model/templates';
 import { isImageName } from '../model/transfer';
+import { GramotkaStep } from './GramotkaStep';
 
 /*
  * Окно «Новый файл» — после того как файл перетащили в окно сайта.
@@ -25,15 +29,17 @@ import { isImageName } from '../model/transfer';
  * Файл ложится в личную папку человека — в тот же раздел и с той же подписью, что и кнопкой «Добавить»
  * на вкладке «Личная папка». Ответы угадываются по имени и типу файла, человек только подтверждает.
  * Несколько файлов идут по очереди: у следующего уже выбраны тот же человек и вид файла.
+ * Грамотка (боец целиком) — свой пункт: временный ключ и приём.
  */
 
-type StepId = 'kind' | 'doc' | 'owner' | 'save';
+type StepId = 'kind' | 'doc' | 'owner' | 'save' | 'gramotka';
 
 const STEP_TITLES: Record<StepId, string> = {
   kind: 'Что за файл',
   doc: 'Какой документ',
   owner: 'На чьё имя закрепить',
   save: 'Название и сохранение',
+  gramotka: 'Принять грамотку',
 };
 
 const KIND_ICONS: Record<IncomingKind, LucideIcon> = {
@@ -42,10 +48,12 @@ const KIND_ICONS: Record<IncomingKind, LucideIcon> = {
   achievements: Award,
   characteristic: PenLine,
   table: FileSpreadsheet,
+  gramotka: FileKey,
   other: FileIcon,
 };
 
 function stepsFor(kind: IncomingKind): StepId[] {
+  if (kind === 'gramotka') return ['kind', 'gramotka'];
   if (kind === 'table') return ['kind', 'save'];
   if (kind === 'scans') return ['kind', 'doc', 'owner', 'save'];
   return ['kind', 'owner', 'save'];
@@ -106,6 +114,7 @@ function answered(a: Answers, step: StepId, name: string): boolean {
   if (step === 'doc') return !!a.doc;
   if (step === 'owner') return a.owner !== null && (a.owner !== 'none' || a.kind === 'other');
   if (step === 'save') return !!name.trim();
+  if (step === 'gramotka') return false;
   return true;
 }
 
@@ -241,6 +250,16 @@ interface Saved {
   kind: IncomingKind;
   personId?: string;
   openAfter: boolean;
+  /** Принятая грамотка: чья и что с ней стало. */
+  fio?: string;
+  how?: string;
+}
+
+/** Где лежит файл — понятными словами: «Грамотка «Фамилия Имя» › Сканы › скан.jpg». */
+function placeText(path: string, workspaceLabel: string, fio: string): string {
+  const parts = splitPath(path);
+  if (parts[0] === MOUNT_ROOT) return [`Грамотка «${fio || 'человека'}»`, ...parts.slice(2)].join(' › ');
+  return [workspaceLabel, ...parts].filter(Boolean).join(' › ');
 }
 
 export default function IncomingDialog({ files, onClose }: FileDropProps) {
@@ -297,19 +316,18 @@ export default function IncomingDialog({ files, onClose }: FileDropProps) {
     return ext ? to.slice(0, -(ext.length + 1)) : to;
   };
 
-  /** Папка, куда ляжет файл (для нового человека — какой она будет). */
-  const folderOf = (x: Answers): string => {
+  /** Папка, куда ляжет файл (у нового человека её ещё нет — появится вместе с грамоткой). */
+  const folderOf = (x: Answers): string | null => {
     const who = x.kind === 'table' ? null : ownerOf(x.owner);
     if (!who) return '';
-    const c = who.personId ? cases.get(who.personId) : undefined;
-    return joinPath(c?.folder ?? joinPath(APP_FOLDER, folderNameFor(who.fields)), sectionFolder(x.kind));
+    if (!who.personId) return null;
+    return joinPath(gramotkaPath(who.personId), sectionFolder(x.kind));
   };
 
   const name = nameOf(a, file);
   const ext = extName(file.name);
   const toPerson = a.kind !== 'table' && a.owner !== 'none';
-  const blocked = toPerson && (cases.readOnly || (!!a.owner && a.owner !== 'none' && 'fio' in a.owner && people.readOnly));
-  const canSave = !!workspace && !busy && !blocked && steps.every((s) => answered(a, s, name));
+  const canSave = !!workspace && !busy && a.kind !== 'gramotka' && steps.every((s) => answered(a, s, name));
   const folder = folderOf(a);
 
   // Фокус — на главный элемент пункта, чтобы отвечать с клавиатуры.
@@ -321,6 +339,10 @@ export default function IncomingDialog({ files, onClose }: FileDropProps) {
   const want = `${name.trim()}${ext ? `.${ext}` : ''}`;
   useEffect(() => {
     if (!workspace || step !== 'save' || !name.trim()) return;
+    if (folder === null) {
+      setPreview(want);
+      return;
+    }
     let alive = true;
     void workspace.freeName(folder, want).then((n) => alive && setPreview(joinPath(folder, n)));
     return () => {
@@ -334,7 +356,7 @@ export default function IncomingDialog({ files, onClose }: FileDropProps) {
       const fio = fioText(r.fields);
       if (!fio) continue;
       const c = cases.get(r.id);
-      out.push({ personId: r.id, fio, key: ownerKey(fio), sub: [r.fields['person.birthDate'], r.fields['rso.squad'], c ? 'есть личная папка' : ''].filter(Boolean).join(' · ') });
+      out.push({ personId: r.id, fio, key: ownerKey(fio), sub: [r.fields['person.birthDate'], r.fields['rso.squad'], c?.files && Object.keys(c.files).length ? 'есть сканы' : ''].filter(Boolean).join(' · ') });
     }
     return out.sort((x, y) => x.fio.localeCompare(y.fio, 'ru'));
   }, [people.records, cases]);
@@ -386,7 +408,7 @@ export default function IncomingDialog({ files, onClose }: FileDropProps) {
     }
     let personId = who.personId;
     if (!personId) {
-      personId = people.put(who.fields, APP_ID);
+      personId = await people.add(who.fields, APP_ID);
       created.current.set(personId, who.fields);
     }
     const c = await cases.ensure(personId, who.fields);
@@ -447,6 +469,14 @@ export default function IncomingDialog({ files, onClose }: FileDropProps) {
       return who ? `${fioText(who.fields)}${who.personId ? '' : ' (новый)'}` : '';
     }
     return '';
+  };
+
+  /** Грамотку приняли — дальше следующий файл или итог. */
+  const accepted = (r: { id: string; fio: string; how: string }) => {
+    const done = [...saved, { path: gramotkaPath(r.id), kind: 'gramotka' as const, personId: r.id, openAfter: false, fio: r.fio, how: r.how }];
+    setSaved(done);
+    if (index + 1 < files.length) goTo(index + 1, a);
+    else finish(done);
   };
 
   const body = (s: StepId) => {
@@ -525,8 +555,11 @@ export default function IncomingDialog({ files, onClose }: FileDropProps) {
         </div>
       );
     }
+    if (s === 'gramotka') return <GramotkaStep file={file} onAccepted={accepted} />;
     if (s === 'owner') {
       return (
+        <>
+        <GramotkiNotice text="Грамотки закрыты — откройте, чтобы выбрать человека из списка." />
         <OwnerStep
           value={a.owner}
           kind={a.kind}
@@ -537,6 +570,7 @@ export default function IncomingDialog({ files, onClose }: FileDropProps) {
             next('owner');
           }}
         />
+        </>
       );
     }
     const who = ownerOf(a.owner);
@@ -593,10 +627,10 @@ export default function IncomingDialog({ files, onClose }: FileDropProps) {
         {workspace && preview && (
           <div className="save-path small">
             <Folder size={14} />
-            <span>{[workspace.label, ...splitPath(preview)].join(' › ')}</span>
+            <span>{placeText(preview, workspace.label, who ? fioText(who.fields) : '')}</span>
           </div>
         )}
-        {toPerson && who && !who.personId && <div className="small muted">«{fioText(who.fields)}» добавится в базу людей, личная папка создастся сама.</div>}
+        {toPerson && who && !who.personId && <div className="small muted">Для «{fioText(who.fields)}» создастся грамотка — файл ляжет в неё.</div>}
         <button type="submit" hidden />
       </form>
     );
@@ -627,7 +661,7 @@ export default function IncomingDialog({ files, onClose }: FileDropProps) {
                 Назад
               </button>
             )}
-            {step !== 'save' ? (
+            {step === 'gramotka' ? null : step !== 'save' ? (
               <button className="btn btn--primary" onClick={() => next(step)} disabled={!answered(a, step, name)}>
                 Далее
               </button>
@@ -659,7 +693,7 @@ export default function IncomingDialog({ files, onClose }: FileDropProps) {
             </div>
           </div>
         </div>
-        {last && <Alert kind="success">Сохранено: {splitPath(last.path).join(' › ')}</Alert>}
+        {last && <Alert kind="success">{last.kind === 'gramotka' ? `Принято: ${last.fio || 'грамотка'}` : `Сохранено: ${placeText(last.path, workspace?.label ?? '', '')}`}</Alert>}
         {error && <Alert kind="error">{error}</Alert>}
         {!workspace ? (
           <>
@@ -668,7 +702,6 @@ export default function IncomingDialog({ files, onClose }: FileDropProps) {
           </>
         ) : (
           <>
-            {blocked && <Alert kind="error">Сведения личных дел или база людей открыты только для чтения (созданы более новой версией DocAssist или повреждены) — сохранить в личную папку нельзя.</Alert>}
             <ol className="wizard">
               {steps.map((s, i) => {
                 const current = s === step;

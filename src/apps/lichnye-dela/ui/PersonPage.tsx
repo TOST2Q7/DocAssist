@@ -7,11 +7,12 @@ import { imageType } from '@/core/docx/image';
 import { writeXlsxBook } from '@/core/tables/tables';
 import { downloadBytes, mimeFor } from '@/core/util/download';
 import { useWorkspace } from '@/core/workspace/WorkspaceContext';
+import { GramotkiGate } from '@/ui/GramotkiGate';
 import { Menu } from '@/ui/Menu';
 import { useToast } from '@/ui/Toast';
 import { APP_ID } from '../constants';
 import { cardDocx } from '../model/card';
-import { casePath, folderNameFor, type CasesApi } from '../model/cases';
+import { casePath, type CasesApi } from '../model/cases';
 import { shortFio } from '../model/names';
 import { fileName, mainPhoto } from '../model/transfer';
 import { FolderView } from './FolderView';
@@ -53,11 +54,11 @@ export function PersonPage({ personId, tab, cases, onTab, onBack, onTransfer }: 
     else blocker.reset();
   }, [blocker]);
 
-  if (!people.loaded) return <div className="loading">Загрузка…</div>;
+  if (!people.available) return <GramotkiGate>{null}</GramotkiGate>;
   if (!record) {
     return (
       <div className="card empty stack">
-        <div>Такого человека нет в базе людей — возможно, запись удалили.</div>
+        <div>Такого человека нет в базе людей — возможно, его удалили или передали другому мастеру.</div>
         <div>
           <button className="btn" onClick={onBack}>
             <ArrowLeft size={16} /> К списку
@@ -70,15 +71,8 @@ export function PersonPage({ personId, tab, cases, onTab, onBack, onTransfer }: 
   const short = shortFio(fio);
 
   const save = (fields: Record<string, string>) => {
-    people.put(fields, APP_ID, record.id);
-    cases.syncFio(record.id, fields);
-    const cur = c && c.folder.split('/').pop();
-    if (c && cur !== folderNameFor(fields) && !cur?.startsWith(`${folderNameFor(fields)} (`)) {
-      toast('Сохранено. ФИО изменилось — переименовать личную папку?', {
-        label: 'Переименовать',
-        run: () => void cases.renameFolder(record.id, fields).then((f) => f && toast(`Папка: ${f}`)),
-      });
-    } else toast('Сохранено в базе людей');
+    people.put(record.id, fields, APP_ID);
+    toast('Сохранено в грамотке');
   };
 
   const downloadCard = async () => {
@@ -110,10 +104,8 @@ export function PersonPage({ personId, tab, cases, onTab, onBack, onTransfer }: 
     }
   };
   const remove = async () => {
-    const msg = c ? `Удалить «${fio}» из базы людей вместе с личной папкой «${c.folder}» (все фото, сканы и документы)?` : `Удалить «${fio}» из базы людей?`;
-    if (!confirm(msg)) return;
-    if (c) await cases.remove(record.id, true);
-    people.remove(record.id);
+    if (!confirm(`Удалить «${fio}» насовсем — вместе с грамоткой (все данные, фото, сканы и документы)?\n\nЕсли боец уходит к другому мастеру, лучше оформить «Перевод».`)) return;
+    await people.remove(record.id);
     toast(`Удалено: ${fio}`);
     onBack();
   };

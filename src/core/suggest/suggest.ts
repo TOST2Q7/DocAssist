@@ -1,4 +1,7 @@
 import { useMemo } from 'react';
+import { useGramotki } from '../gramotka/react';
+import type { PersonEntry } from '../gramotka/store';
+import { EXTRA_FIELDS, PERSON_FIELDS } from '../schema/fields';
 import { defineDocType } from '../schema/docType';
 import { getDocStore, useDocStore } from '../workspace/docStore';
 import { useWorkspace } from '../workspace/WorkspaceContext';
@@ -11,7 +14,35 @@ import type { Workspace } from '../workspace/workspace';
  *   data-field="person.firstName" — точное поле общего языка (подсказки в первую очередь отсюда);
  *   data-kind="name" — тип значения (подсказки из других полей того же типа).
  * Файл: .docassist/suggest.json. В «Предложения в базу» не попадает.
+ *
+ * Поля людей (общий язык: person.*, passport.*…) в файл не пишутся: данные людей хранятся только в грамотках.
+ * Подсказки для них собираются в памяти из открытых грамоток.
  */
+
+const PERSON_KIND = new Map([...PERSON_FIELDS, ...EXTRA_FIELDS].map((f) => [f.id, f.varKind as string | undefined]));
+
+/** Поле людей — его значения живут в грамотках, а не в словаре. */
+export const isPersonField = (key: string) => PERSON_KIND.has(key);
+
+/** Подсказки из открытых грамоток: что записано у людей в каждом поле (одинаковое — одним пунктом со счётом). */
+export function peopleSuggestions(people: PersonEntry[]): SuggestItem[] {
+  const map = new Map<string, SuggestItem>();
+  for (const p of people) {
+    for (const [key, raw] of Object.entries(p.fields)) {
+      if (!PERSON_KIND.has(key)) continue;
+      const value = raw.replace(/\s+/g, ' ').trim();
+      if (!value || value.length > MAX_LEN) continue;
+      const id = `${key}\u0001${value}`;
+      const prev = map.get(id);
+      if (prev) map.set(id, { ...prev, count: prev.count + 1, last: prev.last > p.savedAt ? prev.last : p.savedAt });
+      else {
+        const kind = PERSON_KIND.get(key);
+        map.set(id, { key, ...(kind ? { kind } : {}), value, count: 1, last: p.savedAt });
+      }
+    }
+  }
+  return [...map.values()];
+}
 
 export interface SuggestItem {
   /** Поле, где значение вводили: id поля (person.firstName) или тип (name). */
@@ -49,7 +80,7 @@ const norm = (s: string) => s.toLowerCase().replace(/ё/g, 'е').replace(/\s+/g,
 /** Добавить значение (или поднять его счётчик). */
 export function learnValue(doc: SuggestDoc, key: string, kind: string | undefined, raw: string): SuggestDoc {
   const value = raw.replace(/\s+/g, ' ').trim();
-  if (!doc.enabled || !key || !value || value.length > MAX_LEN) return doc;
+  if (!doc.enabled || !key || !value || value.length > MAX_LEN || isPersonField(key)) return doc;
   const now = new Date().toISOString();
   const i = doc.items.findIndex((x) => x.key === key && x.value === value);
   let items = i >= 0 ? doc.items.map((x, j) => (j === i ? { ...x, kind: kind ?? x.kind, count: x.count + 1, last: now } : x)) : [...doc.items, { key, ...(kind ? { kind } : {}), value, count: 1, last: now }];
@@ -110,12 +141,17 @@ export function useSuggestions() {
   const store = useMemo(() => (workspace ? suggestStore(workspace) : null), [workspace]);
   const state = useDocStore(store);
   const doc = state?.data;
+  const { snap } = useGramotki();
+  const fromPeople = useMemo(() => peopleSuggestions(snap.people), [snap.people]);
   return useMemo(
     () => ({
       ready: !!state?.loaded,
       readOnly: !!state?.tooNew || !!state?.broken,
       enabled: doc?.enabled ?? true,
-      items: doc?.items ?? [],
+      /** Словарь и (если включён) данные людей из открытых грамоток. */
+      items: (doc?.enabled ?? true) ? [...(doc?.items ?? []), ...fromPeople] : [],
+      /** Только то, что хранится в словаре (для страницы словаря). */
+      stored: doc?.items ?? [],
       learn(key: string, kind: string | undefined, value: string) {
         if (!store) return;
         // Только после загрузки файла — иначе запись затёрла бы уже сохранённый словарь.
@@ -135,6 +171,6 @@ export function useSuggestions() {
         store?.update((d) => ({ ...d, enabled }));
       },
     }),
-    [doc, state?.loaded, state?.tooNew, state?.broken, store],
+    [doc, state?.loaded, state?.tooNew, state?.broken, store, fromPeople],
   );
 }

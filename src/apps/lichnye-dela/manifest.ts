@@ -1,7 +1,7 @@
 import { lazy } from 'react';
 import { BookUser } from 'lucide-react';
 import type { AppManifest } from '@/core/registry/types';
-import { APP_FOLDER, CASES_FILE, DRIVE_FILE, TEMPLATES_FILE } from './constants';
+import { APP_FOLDER, DRIVE_FILE, TEMPLATES_FILE } from './constants';
 
 const manifest: AppManifest = {
   id: 'lichnye-dela',
@@ -17,7 +17,6 @@ const manifest: AppManifest = {
   settingsFiles: [TEMPLATES_FILE],
   syncGroups: [
     { id: 'lichnye-dela-drive', title: 'Личные дела: связь с Google Диском', hint: 'Древо папок, правила оформления, какие файлы где лежат (в названиях — ФИО бойцов).', files: [DRIVE_FILE], personal: true },
-    { id: 'lichnye-dela-cases', title: 'Личные дела: сведения', hint: 'Достижения, характеристики, подписи сканов (без самих файлов).', files: [CASES_FILE], personal: true },
   ],
   requiresWorkspace: true,
   badges: [{ kind: 'new' }],

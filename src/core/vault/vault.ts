@@ -1,14 +1,16 @@
 import { kvDelete, kvGet, kvSet } from '../storage/idb';
 
 /*
- * Сейф: закрыть и открыть данные контрольной фразой. Отдельный блок — остальные части приложения знают только
- * lock/unlock и ничего не знают о том, как это устроено внутри.
+ * Сейф: закрыть и открыть данные. Отдельный блок — остальные части приложения знают только его функции
+ * и ничего не знают о том, как это устроено внутри.
  *
- * - Ключ получается из фразы на устройстве; фраза никуда не отправляется и нигде не хранится.
- * - Без фразы открыть нельзя никак: ни через Google-аккаунт, ни через разработчика. Забыли фразу — данных нет.
+ * - Ключ получается из пароля или фразы на устройстве; они никуда не отправляются и нигде не хранятся.
+ * - Без пароля (фразы) открыть нельзя никак: ни через Google-аккаунт, ни через разработчика.
  * - Закрытые данные — только случайные на вид байты: ни подписей, ни названий способа, ни параметров.
  * - «Запомнить на этом устройстве»: в браузере сохраняется ключ, который нельзя извлечь (только применить), —
- *   фразу не нужно вводить каждый раз. Не включать на чужом компьютере.
+ *   пароль не нужно вводить каждый раз. Не включать на чужом компьютере.
+ *
+ * Здесь — пароль личных настроек на Google Диске. Фраза грамоток — owner.ts, пропуска и журнал — pass.ts.
  */
 
 const SALT = 16;
@@ -17,13 +19,13 @@ const ROUNDS = 600_000;
 const REMEMBER_KEY = 'vault.key';
 
 export class VaultError extends Error {
-  constructor(readonly kind: 'wrong-phrase' | 'damaged' | 'unsupported', message: string) {
+  constructor(readonly kind: 'wrong-phrase' | 'damaged' | 'unsupported' | 'too-many' | 'expired', message: string) {
     super(message);
     this.name = 'VaultError';
   }
 }
 
-function subtle(): SubtleCrypto {
+export function subtle(): SubtleCrypto {
   const s = globalThis.crypto?.subtle;
   if (!s) throw new VaultError('unsupported', 'Этот браузер не умеет шифровать (нужно защищённое соединение https).');
   return s;
@@ -34,15 +36,24 @@ export function normalizePhrase(phrase: string): string {
   return phrase.normalize('NFKC').toLowerCase().replace(/ё/g, 'е').trim().replace(/\s+/g, ' ');
 }
 
+/** Пароль: только лишние пробелы по краям (регистр важен). */
+export function normalizePassword(password: string): string {
+  return password.normalize('NFKC').trim();
+}
+
+export const ROUNDS_COUNT = ROUNDS;
+export const SALT_SIZE = SALT;
+export const NONCE_SIZE = NONCE;
+
 export interface VaultKey {
   key: CryptoKey;
   salt: Uint8Array;
 }
 
-/** Ключ из фразы (для этой соли). Ключ нельзя извлечь из браузера — только применить. */
-export async function keyFromPhrase(phrase: string, salt: Uint8Array = crypto.getRandomValues(new Uint8Array(SALT))): Promise<VaultKey> {
+/** Ключ из пароля (для этой соли). Ключ нельзя извлечь из браузера — только применить. */
+export async function keyFromPassword(password: string, salt: Uint8Array = crypto.getRandomValues(new Uint8Array(SALT))): Promise<VaultKey> {
   const s = subtle();
-  const base = await s.importKey('raw', new TextEncoder().encode(normalizePhrase(phrase)), 'PBKDF2', false, ['deriveKey']);
+  const base = await s.importKey('raw', new TextEncoder().encode(normalizePassword(password)), 'PBKDF2', false, ['deriveKey']);
   const key = await s.deriveKey({ name: 'PBKDF2', hash: 'SHA-256', salt: salt as BufferSource, iterations: ROUNDS }, base, { name: 'AES-GCM', length: 256 }, false, ['encrypt', 'decrypt']);
   return { key, salt };
 }
@@ -58,9 +69,9 @@ export async function lockWithKey(data: Uint8Array, vk: VaultKey): Promise<Uint8
   return out;
 }
 
-/** Закрыть данные фразой. */
-export async function lock(data: Uint8Array, phrase: string): Promise<Uint8Array> {
-  return lockWithKey(data, await keyFromPhrase(phrase));
+/** Закрыть данные паролем. */
+export async function lock(data: Uint8Array, password: string): Promise<Uint8Array> {
+  return lockWithKey(data, await keyFromPassword(password));
 }
 
 /** Соль закрытых данных: нужна, чтобы получить ключ из фразы. */
@@ -75,13 +86,13 @@ export async function unlockWithKey(sealed: Uint8Array, vk: VaultKey): Promise<U
   try {
     return new Uint8Array(await subtle().decrypt({ name: 'AES-GCM', iv: sealed.slice(SALT, SALT + NONCE) as BufferSource }, vk.key, sealed.slice(SALT + NONCE) as BufferSource));
   } catch {
-    throw new VaultError('wrong-phrase', 'Фраза не подходит (или файл повреждён).');
+    throw new VaultError('wrong-phrase', 'Пароль не подходит (или файл повреждён).');
   }
 }
 
-/** Открыть фразой. */
-export async function unlock(sealed: Uint8Array, phrase: string): Promise<{ data: Uint8Array; key: VaultKey }> {
-  const key = await keyFromPhrase(phrase, saltOf(sealed));
+/** Открыть паролем. */
+export async function unlock(sealed: Uint8Array, password: string): Promise<{ data: Uint8Array; key: VaultKey }> {
+  const key = await keyFromPassword(password, saltOf(sealed));
   return { data: await unlockWithKey(sealed, key), key };
 }
 
@@ -110,16 +121,26 @@ export async function forgetKey(): Promise<void> {
   await kvDelete(REMEMBER_KEY).catch(() => undefined);
 }
 
-// ---------- Фраза ----------
+// ---------- Пароль и фраза ----------
 
 export interface PhraseCheck {
   ok: boolean;
-  /** 0 — слабая, 3 — хорошая. */
+  /** 0 — не подходит, 1 — слабый, 3 — надёжный. */
   level: 0 | 1 | 2 | 3;
   hint: string;
 }
 
-/** Оценка фразы: длина и число слов (короткие пароли подбираются, длинные фразы — нет). */
+/** Пароль личных настроек: не короче 4 знаков. Короткий пароль подбирается быстро — так и говорим. */
+export function checkPassword(password: string): PhraseCheck {
+  const p = normalizePassword(password);
+  const kinds = [/\p{Ll}/u, /\p{Lu}/u, /\d/, /[^\p{L}\d]/u].filter((r) => r.test(p)).length;
+  if (p.length < 4) return { ok: false, level: 0, hint: 'Нужно хотя бы 4 знака (например, 4 цифры).' };
+  if (p.length >= 12 || (p.length >= 9 && kinds >= 2)) return { ok: true, level: 3, hint: 'Надёжный пароль.' };
+  if (p.length >= 7 || (p.length >= 6 && kinds >= 2)) return { ok: true, level: 2, hint: 'Хороший пароль. Длиннее — надёжнее.' };
+  return { ok: true, level: 1, hint: 'Подойдёт, но такой пароль легко подобрать, если файл попадёт в чужие руки. Длиннее — надёжнее.' };
+}
+
+/** Фраза грамоток: несколько не связанных между собой слов (короткие пароли подбираются, длинные фразы — нет). */
 export function checkPhrase(phrase: string): PhraseCheck {
   const p = normalizePhrase(phrase);
   const words = p.split(' ').filter((w) => w.length >= 3).length;

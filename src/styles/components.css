@@ -996,6 +996,10 @@ a.list__item:hover::before {
   padding: 16px;
   animation: fade-in var(--dur) var(--ease);
 }
+.modal-overlay--top {
+  z-index: 210;
+  background: rgb(8 17 30 / 72%);
+}
 .modal {
   background: var(--surface);
   border: 1px solid var(--border);
@@ -3187,4 +3191,21 @@ a.cover-app--primary:hover {
 }
 .picker-dialog {
   z-index: 2001 !important;
+}
+
+/* ---------- Грамотки ---------- */
+.gramotki-progress {
+  width: 100%;
+  height: 8px;
+  accent-color: var(--brand);
+}
+.sealed-list .list__item {
+  opacity: 0.75;
+}
+.merge-row__sides {
+  gap: 16px;
+  flex-wrap: wrap;
+}
+.merge-row__sides .is-selected {
+  font-weight: 600;
 }

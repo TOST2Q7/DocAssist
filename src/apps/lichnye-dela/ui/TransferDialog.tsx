@@ -1,16 +1,19 @@
-import { CheckCircle2, Download, FileText, Loader2, PackageCheck, X } from 'lucide-react';
+import { CheckCircle2, ClipboardCopy, Download, FileKey, FileText, Loader2, PackageCheck, X } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
+import { useGramotki } from '@/core/gramotka/react';
+import { TRANSFER_DAYS, type TransferFile } from '@/core/gramotka/store';
+import { addToHandout, HANDOUT_FOLDER } from '@/core/handout/handout';
 import { fioText, usePeople } from '@/core/people/people';
 import { extName } from '@/core/storage/types';
 import { downloadBytes } from '@/core/util/download';
-import { formatBytes } from '@/core/util/format';
+import { formatBytes, formatDateTime } from '@/core/util/format';
 import { uid } from '@/core/util/id';
 import { useVariables } from '@/core/variables/variables';
 import { useWorkspace } from '@/core/workspace/WorkspaceContext';
 import { Alert } from '@/ui/Alert';
 import { Modal } from '@/ui/Modal';
 import { useToast } from '@/ui/Toast';
-import { TRANSFER_REASONS, WORD_TEMPLATES_FOLDER } from '../constants';
+import { APP_ID, TRANSFER_REASONS, WORD_TEMPLATES_FOLDER } from '../constants';
 import { safeName, type CasesApi } from '../model/cases';
 import { shortFio } from '../model/names';
 import { useTemplates } from '../model/templates';
@@ -19,9 +22,6 @@ import {
   dateStamp,
   DEFAULT_OPTIONS,
   emptyTransferForm,
-  freeFolder,
-  packageFolder,
-  savePackage,
   transferRecord,
   transferSides,
   zipPackage,
@@ -41,14 +41,18 @@ interface Props {
 
 interface Done {
   id: string;
-  folder: string;
   zipName: string;
   zip: Uint8Array;
   files: PackageFile[];
   warnings: string[];
   people: string[];
   applied: boolean;
+  /** Грамотки переданы: временный ключ, до какого времени, файлы. */
+  handed?: { code: string; until: string; files: TransferFile[] };
 }
+
+/** «123456» → «123 456» — так ключ легче продиктовать. */
+const codeText = (code: string) => `${code.slice(0, 3)} ${code.slice(3)}`;
 
 export function TransferDialog({ personIds, cases, onClose }: Props) {
   const { workspace } = useWorkspace();
@@ -57,6 +61,8 @@ export function TransferDialog({ personIds, cases, onClose }: Props) {
   const templates = useTemplates();
   const toast = useToast();
   const apply = useApplyTransfer(cases);
+  const { store } = useGramotki();
+  const [hand, setHand] = useState(true);
   const wordFiles = (useFolderFiles(WORD_TEMPLATES_FOLDER) ?? []).filter((e) => extName(e.name) === 'docx' && !e.name.startsWith('~$'));
 
   const [ids, setIds] = useState(personIds);
@@ -89,22 +95,39 @@ export function TransferDialog({ personIds, cases, onClose }: Props) {
 
   const build = async () => {
     if (!workspace || !persons.length) return;
+    if (hand && !confirm(`Передать ${persons.length > 1 ? `грамотки (${persons.length} чел.)` : 'грамотку'} новому мастеру?\n\nПосле этого у вас ${persons.length > 1 ? 'эти бойцы останутся' : 'боец останется'} только в списке «Переданы» — открыть ${persons.length > 1 ? 'их' : 'его'} будет нельзя.`)) return;
     setProgress('Готовим личные папки');
     try {
       const list = [];
       for (const r of persons) list.push({ record: r, case: await cases.ensure(r.id, r.fields) });
       const res = await buildTransferPackage({ ws: workspace, people: list, form, options: opts, templates: templates.list, vars: vars.items, prepareImage, onProgress: setProgress });
-      setProgress('Сохраняем в рабочую папку');
-      const folder = await freeFolder(workspace, packageFolder(list, res.name));
-      await savePackage(workspace, folder, res.files);
+      setProgress('Кладём в «Для выдачи»');
       const zip = zipPackage(res.files);
-      const who = list.length === 1 ? shortFio(fioText(list[0].record.fields)) : `${list.length} чел`;
-      const zipName = `${safeName(`Перевод — ${who} — ${dateStamp(form.date)}`)}.zip`;
+      const shortOf = (fields: Record<string, string>) => shortFio(fioText(fields)) || 'Без имени';
+      const who = list.length === 1 ? shortOf(list[0].record.fields) : `${list.length} чел`;
+      const zipName = await addToHandout(workspace, `${safeName(`Перевод — ${who} — ${dateStamp(form.date)}`)}.zip`, zip, { source: APP_ID, label: 'Пакет перевода', who });
       downloadBytes(zip, zipName, 'application/zip');
       const id = uid('tr_');
-      for (const p of list) cases.addTransfer(p.record.id, transferRecord(p.record.fields, form, id, folder, list.length));
+      for (const p of list) cases.addTransfer(p.record.id, transferRecord(p.record.fields, form, id, `${HANDOUT_FOLDER}/${zipName}`, list.length));
       cases.setLastTransfer({ toSquad: form.toSquad, toBranch: form.toBranch, toDirection: form.toDirection, commanderFrom: form.commanderFrom, commanderTo: form.commanderTo, reason: form.reason });
-      setDone({ id, folder, zipName, zip, files: res.files, warnings: res.warnings, people: list.map((p) => p.record.id), applied: false });
+      let handed: Done['handed'];
+      if (hand && store) {
+        setProgress('Готовим грамотки для нового мастера');
+        await store.flushAll();
+        const byId = new Map(list.map((p) => [p.record.id, shortOf(p.record.fields)]));
+        const r = await store.transfer(
+          list.map((p) => p.record.id),
+          (gid) => byId.get(gid) ?? '',
+        );
+        const files: TransferFile[] = [];
+        for (const f of r.files) {
+          const name = await addToHandout(workspace, f.name, f.data, { source: APP_ID, label: 'Грамотка (для нового мастера)', who: byId.get(f.id) });
+          files.push({ ...f, name });
+          downloadBytes(f.data, name);
+        }
+        handed = { code: r.code, until: r.until, files };
+      }
+      setDone({ id, zipName, zip, files: res.files, warnings: res.warnings, people: list.map((p) => p.record.id), applied: false, handed });
     } catch (e) {
       toast(`Не удалось собрать пакет: ${e instanceof Error ? e.message : String(e)}`);
     } finally {
@@ -132,8 +155,49 @@ export function TransferDialog({ personIds, cases, onClose }: Props) {
       >
         <div className="stack">
           <Alert kind="success">
-            Архив «{done.zipName}» скачан. Всё сохранено и в рабочую папку: <strong>{done.folder}</strong>.
+            Архив «{done.zipName}» скачан и лежит в «{HANDOUT_FOLDER}».
           </Alert>
+          {done.handed && (
+            <div className="card stack stack--s transfer-key">
+              <div className="row">
+                <FileKey size={18} className="brand-icon" />
+                <strong className="spacer">Временный ключ для нового мастера</strong>
+              </div>
+              <div className="row">
+                <span className="transfer-key__code mono">{codeText(done.handed.code)}</span>
+                <button
+                  className="btn btn--sm"
+                  onClick={() => void navigator.clipboard?.writeText(done.handed!.code).then(() => toast('Ключ скопирован'), () => toast('Браузер не дал скопировать'))}
+                >
+                  <ClipboardCopy size={14} /> Скопировать
+                </button>
+              </div>
+              <span className="small">
+                Действует до {formatDateTime(done.handed.until)} ({TRANSFER_DAYS} дня). Отправьте новому мастеру {done.handed.files.length > 1 ? 'файлы грамоток' : 'файл грамотки'} и
+                сообщите ключ — лучше другим путём: файл в чат, ключ голосом. Он перетащит файл в окно DocAssist и введёт ключ.
+              </span>
+              <div className="list">
+                {done.handed.files.map((f) => (
+                  <div key={f.name} className="list__item">
+                    <FileKey size={18} className="faint" />
+                    <div className="list__main">
+                      <div className="list__title small">{f.name}</div>
+                      <div className="list__sub">
+                        {formatBytes(f.data.byteLength)} · в «{HANDOUT_FOLDER}»
+                      </div>
+                    </div>
+                    <button className="btn btn--sm" onClick={() => downloadBytes(f.data, f.name)}>
+                      <Download size={14} /> Скачать
+                    </button>
+                  </div>
+                ))}
+              </div>
+              <span className="small muted">
+                У вас {done.handed.files.length > 1 ? 'эти бойцы теперь' : 'боец теперь'} в списке «Переданы»: копия запечатана — открыть её нельзя. Ключ запишите
+                сейчас: показать его ещё раз не получится.
+              </span>
+            </div>
+          )}
           {done.warnings.length > 0 && (
             <Alert kind="warning">
               <strong>Проверьте:</strong>
@@ -157,7 +221,7 @@ export function TransferDialog({ personIds, cases, onClose }: Props) {
               </div>
             ))}
           </div>
-          <div className="card card--flat row">
+          {!done.handed && <div className="card card--flat row">
             <div className="spacer small">
               Когда перевод состоится, отметьте это — в данные {done.people.length > 1 ? 'бойцов' : 'бойца'} запишется новый отряд ({to.squad || 'без изменений'}
               {to.branch ? `, ${to.branch}` : ''}). Это можно сделать и позже — в разделе «Перевод» у бойца.
@@ -173,7 +237,7 @@ export function TransferDialog({ personIds, cases, onClose }: Props) {
             >
               <CheckCircle2 size={16} /> {done.applied ? 'Записано' : 'Перевод уже состоялся'}
             </button>
-          </div>
+          </div>}
         </div>
       </Modal>
     );
@@ -319,6 +383,18 @@ export function TransferDialog({ personIds, cases, onClose }: Props) {
             </label>
           </div>
           <span className="small muted">Файлы получат понятные имена: «01 Паспорт (разворот с фото) — Фамилия И. О.jpg». Исходные файлы в личной папке не меняются.</span>
+        </fieldset>
+
+        <fieldset className="fieldset stack stack--s">
+          <legend>Грамотка</legend>
+          <label className="check">
+            <input type="checkbox" checked={hand} onChange={(e) => setHand(e.target.checked)} /> Передать грамотку новому мастеру
+          </label>
+          <span className="small muted">
+            Получится файл грамотки и временный ключ из 6 цифр (действует {TRANSFER_DAYS} дня): новый мастер перетащит файл в DocAssist и введёт ключ — боец появится у
+            него со всеми данными, фото и сканами. У вас останется запечатанная копия — открыть её будет нельзя. Новый отряд в данные запишет новый мастер
+            («Перевод состоялся»).
+          </span>
         </fieldset>
 
         {checks.length > 0 && (

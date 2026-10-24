@@ -1,3 +1,4 @@
+import { GRAMOTKA_EXT } from '@/core/gramotka/store';
 import { extName } from '@/core/storage/types';
 import { TABLE_EXTENSIONS } from '@/core/tables/formats';
 import { guessScanKind, SECTION_BY_ID, type SectionId } from '../constants';
@@ -7,9 +8,10 @@ import { isImageName } from './transfer';
  * Файл, перетащенный в окно сайта: что это и куда его положить.
  * Разделы личной папки — как на вкладке «Личная папка»; таблица с анкетами — в рабочую папку
  * (её откроет «Проверка анкет»); «Другое» — в личную папку человека или просто в рабочую папку.
+ * Грамотка — боец целиком (от другого мастера по временному ключу или своя копия).
  */
 
-export type IncomingKind = SectionId | 'table' | 'other';
+export type IncomingKind = SectionId | 'table' | 'gramotka' | 'other';
 
 export const INCOMING_KINDS: { id: IncomingKind; title: string; hint: string }[] = [
   { id: 'scans', title: 'Скан документа', hint: 'Паспорт, СНИЛС, ИНН, справка — в личную папку человека' },
@@ -17,6 +19,7 @@ export const INCOMING_KINDS: { id: IncomingKind; title: string; hint: string }[]
   { id: 'achievements', title: 'Грамота, диплом', hint: 'В достижения человека' },
   { id: 'characteristic', title: 'Характеристика', hint: 'Подписанная характеристика или её файл' },
   { id: 'table', title: 'Таблица с анкетами', hint: 'Сохранится в рабочую папку и откроется в «Проверке анкет»' },
+  { id: 'gramotka', title: 'Грамотка', hint: 'Боец целиком — от другого мастера (нужен временный ключ) или своя копия' },
   { id: 'other', title: 'Другое', hint: 'В личную папку человека или просто в рабочую папку' },
 ];
 
@@ -24,12 +27,13 @@ export const INCOMING_KIND_BY_ID = Object.fromEntries(INCOMING_KINDS.map((k) => 
 
 /** Раздел личной папки, куда ляжет файл: «Сканы»… «Другое» — в саму личную папку. */
 export function sectionFolder(kind: IncomingKind): string {
-  return kind === 'table' || kind === 'other' ? '' : SECTION_BY_ID[kind].folder;
+  return kind === 'table' || kind === 'other' || kind === 'gramotka' ? '' : SECTION_BY_ID[kind].folder;
 }
 
 /** Что за файл — если это видно по расширению таблицы или словам в имени («паспорт», «грамота», «фото»). */
 export function strongGuess(name: string, mime = ''): IncomingKind | null {
   const n = name.toLowerCase().replace(/ё/g, 'е');
+  if (extName(name) === GRAMOTKA_EXT) return 'gramotka';
   if (TABLE_EXTENSIONS.includes(extName(name))) return 'table';
   if (/характеристик/.test(n)) return 'characteristic';
   if (/грамот|диплом|благодарност|сертификат/.test(n)) return 'achievements';

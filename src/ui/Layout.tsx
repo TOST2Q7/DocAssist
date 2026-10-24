@@ -6,6 +6,7 @@ import { APP_VERSION, IS_SINGLE_FILE } from '@/core/config';
 import { usePrefsSync } from '@/core/settings/prefs';
 import { useUpdateCheck } from '@/core/update/checkUpdate';
 import { FileDrop } from './FileDrop';
+import { GramotkiDialog } from './GramotkiDialog';
 import { usePointerEffects } from './effects';
 import { Header } from './Header';
 import { sectionKey, useSection } from './section';
@@ -113,6 +114,7 @@ export function Layout() {
       <VarSuggest />
       <Tooltip />
       <FileDrop />
+      <GramotkiDialog />
       <SyncAuto />
       <Footer />
       {/* Новая страница открывается сверху, «Назад» возвращает туда, где были. Внутри страницы (?…) не прыгает. */}

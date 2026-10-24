@@ -1,17 +1,16 @@
-import { Award, Camera, Download, ExternalLink, FileText, FolderOutput, FolderPlus, PenLine, Plus, ScanLine, Star, Trash2, Upload, Wand2 } from 'lucide-react';
-import { useEffect, useMemo, useState } from 'react';
+import { Award, Camera, Download, ExternalLink, FileText, FolderOutput, PenLine, Plus, ScanLine, Star, Trash2, Upload, Wand2 } from 'lucide-react';
+import { useEffect, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { fioText, usePeople, type PersonRecord } from '@/core/people/people';
+import { fioText, type PersonRecord } from '@/core/people/people';
 import { baseName, joinPath, type FsEntry } from '@/core/storage/types';
 import { downloadBytes, mimeFor, pickFiles } from '@/core/util/download';
 import { formatBytes } from '@/core/util/format';
 import { useVariables } from '@/core/variables/variables';
 import { useWorkspace } from '@/core/workspace/WorkspaceContext';
-import { Alert } from '@/ui/Alert';
 import { Menu, type MenuAction } from '@/ui/Menu';
 import { useToast } from '@/ui/Toast';
 import { ACHIEVEMENT_LEVELS, guessScanKind, REQUIRED_SCANS, SCAN_KINDS, SECTION_BY_ID, type SectionId } from '../constants';
-import { casePath, folderNameFor, type CasesApi, type PersonCase } from '../model/cases';
+import { casePath, type CasesApi, type PersonCase } from '../model/cases';
 import { fillText, makeResolver, personGender, placeholderValues } from '../model/placeholders';
 import { CHARACTERISTIC_DRAFT, templateDocx, useTemplates } from '../model/templates';
 import { fileName, isImageName } from '../model/transfer';
@@ -489,68 +488,21 @@ function OtherFilesSection({ c, cases, readOnly }: SectionProps) {
 
 export function FolderView({ record, cases }: { record: PersonRecord; cases: CasesApi }) {
   const [, setParams] = useSearchParams();
-  const toast = useToast();
-  const people = usePeople();
-  const { workspace } = useWorkspace();
   const c = cases.get(record.id);
-  const [busy, setBusy] = useState(false);
   const readOnly = cases.readOnly;
-  const expected = useMemo(() => folderNameFor(record.fields), [record.fields]);
+  const [ready, setReady] = useState(false);
 
-  if (!cases.loaded) return <div className="loading">Загрузка…</div>;
-  if (!c) {
-    return (
-      <div className="card empty stack">
-        <FolderPlus size={32} className="faint" style={{ margin: '0 auto' }} />
-        <div>Личной папки ещё нет.</div>
-        <div className="small">В ней будут фотографии, сканы документов, достижения и характеристика.</div>
-        <div>
-          <button
-            className="btn btn--primary"
-            disabled={busy || readOnly || people.readOnly}
-            onClick={async () => {
-              setBusy(true);
-              try {
-                const made = await cases.ensure(record.id, record.fields);
-                toast(`Создана папка «${made.folder}»`);
-              } finally {
-                setBusy(false);
-              }
-            }}
-          >
-            <FolderPlus size={16} /> Создать личную папку
-          </button>
-        </div>
-      </div>
-    );
-  }
+  // Разделы личной папки (Фотографии, Сканы…) — на месте.
+  useEffect(() => {
+    if (readOnly) return;
+    void cases.ensure(record.id, record.fields).finally(() => setReady(true));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [record.id, readOnly]);
 
-  const renamed = baseName(c.folder) !== expected && !baseName(c.folder).startsWith(`${expected} (`);
+  if (!c || (!ready && !readOnly)) return <div className="loading">Загрузка…</div>;
   return (
     <div className="stack">
-      <div className="row small muted">
-        <span>
-          Папка: <strong>{c.folder}</strong>
-        </span>
-        {renamed && workspace && (
-          <button
-            className="btn btn--sm"
-            disabled={busy || readOnly}
-            onClick={async () => {
-              setBusy(true);
-              try {
-                const folder = await cases.renameFolder(record.id, record.fields);
-                if (folder) toast(`Папка переименована: ${folder}`);
-              } finally {
-                setBusy(false);
-              }
-            }}
-          >
-            Переименовать по ФИО: «{expected}»
-          </button>
-        )}
-      </div>
-      {readOnly && <Alert kind="warning">Сведения личных дел открыты только для чтения (файл создан более новой версией DocAssist или повреждён).</Alert>}
+      <div className="small muted">Файлы лежат внутри грамотки — закрыты вместе с ней. Чтобы отдать файл, скачайте его или положите в «Для выдачи».</div>
       <CaseDrive c={c} record={record} cases={cases} onOpenDriveTab={() => setParams({ view: 'drive' })}>
         <div className="dela-sections">
           <PhotosSection c={c} cases={cases} readOnly={readOnly} />
@@ -563,4 +515,3 @@ export function FolderView({ record, cases }: { record: PersonRecord; cases: Cas
     </div>
   );
 }
-

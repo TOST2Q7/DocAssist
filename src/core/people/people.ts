@@ -1,36 +1,25 @@
 import { useMemo } from 'react';
-import { defineDocType } from '../schema/docType';
-import { uid } from '../util/id';
-import { getDocStore, useDocStore } from '../workspace/docStore';
+import { ensureOpen, GramotkiClosedError, useGramotki } from '../gramotka/react';
+import type { GramotkiStatus, GramotkiStore } from '../gramotka/store';
 import { useWorkspace } from '../workspace/WorkspaceContext';
-import type { Workspace } from '../workspace/workspace';
 
 /*
  * База людей — проверенные («актуальные») данные людей на общем языке полей (person.lastName, passport.series…).
+ * Каждый человек — своя грамотка (src/core/gramotka): данные хранятся только в ней, закрытые фразой мастера.
  * Её заполняют приложения: «Проверка анкет» сохраняет готовые анкеты, «Личные дела» — ручной ввод всех полей,
  * «Генератор документов» дописывает то, чего не хватило для документа (в том числе поля вне анкеты — место работы).
  * По ней работает кнопка «Проверить с актуальной информацией» и проверка уникальности («уже было» у другого человека).
- * Файл: .docassist/people.json. В «Предложения в базу» не попадает — это персональные данные.
+ * В «Предложения в базу» не попадает — это персональные данные.
  */
 
 export interface PersonRecord {
+  /** Номер грамотки. */
   id: string;
   /** Значения по идентификаторам полей. */
   fields: Record<string, string>;
   savedAt: string;
   source: string;
 }
-
-export interface PeopleDoc {
-  records: PersonRecord[];
-}
-
-export const peopleDocType = defineDocType<PeopleDoc>({
-  type: 'docassist/people',
-  version: 1,
-  migrations: {},
-  empty: () => ({ records: [] }),
-});
 
 export const FIO_FIELDS = ['person.lastName', 'person.firstName', 'person.middleName'] as const;
 
@@ -47,26 +36,24 @@ export function fioText(fields: Record<string, string | undefined>): string {
     .join(' ');
 }
 
-export function peopleStore(ws: Workspace) {
-  return getDocStore(ws, ws.systemPath('people.json'), peopleDocType);
-}
+const clean = (fields: Record<string, string>) => Object.fromEntries(Object.entries(fields).filter(([, v]) => v.trim() !== ''));
 
-/** Добавить человека или обновить его запись (тот же ФИО и та же дата рождения). */
+/** Добавить человека или обновить его запись (тот же ФИО и та же дата рождения). Новая запись — с пустым id (его даст грамотка). */
 export function upsertPerson(
   records: PersonRecord[],
   fields: Record<string, string>,
   source: string,
   now = new Date().toISOString(),
 ): { records: PersonRecord[]; id: string; how: 'added' | 'updated' } {
-  const clean = Object.fromEntries(Object.entries(fields).filter(([, v]) => v.trim() !== ''));
-  const same = records.find((r) => fioKey(r.fields) === fioKey(clean) && (r.fields['person.birthDate'] ?? '') === (clean['person.birthDate'] ?? ''));
+  const cleaned = clean(fields);
+  const same = records.find((r) => fioKey(r.fields) === fioKey(cleaned) && (r.fields['person.birthDate'] ?? '') === (cleaned['person.birthDate'] ?? ''));
   if (!same) {
-    const record: PersonRecord = { id: uid('p_'), fields: clean, savedAt: now, source };
+    const record: PersonRecord = { id: '', fields: cleaned, savedAt: now, source };
     return { records: [...records, record], id: record.id, how: 'added' };
   }
   // Поля, о которых сохраняющий не знает (их дописало другое приложение), остаются.
   const kept = Object.fromEntries(Object.entries(same.fields).filter(([id]) => !(id in fields)));
-  const record: PersonRecord = { id: same.id, fields: { ...kept, ...clean }, savedAt: now, source };
+  const record: PersonRecord = { id: same.id, fields: { ...kept, ...cleaned }, savedAt: now, source };
   return { records: records.map((r) => (r.id === same.id ? record : r)), id: same.id, how: 'updated' };
 }
 
@@ -83,48 +70,96 @@ export function findByFio(records: PersonRecord[], fields: Record<string, string
   return records.filter((r) => fioKey(r.fields) === key);
 }
 
+// ---------- База людей поверх грамоток (без React — для экранов и проверок) ----------
+
+const queues = new WeakMap<GramotkiStore, Promise<unknown>>();
+
+/** Сохранения по очереди: двойное нажатие не создаст двух грамоток одному человеку. */
+function serial<T>(store: GramotkiStore, fn: () => Promise<T>): Promise<T> {
+  const next = (queues.get(store) ?? Promise.resolve()).then(fn, fn);
+  queues.set(
+    store,
+    next.catch(() => undefined),
+  );
+  return next;
+}
+
+/** Сохранить человека: тот же ФИО и та же дата рождения — обновить его грамотку, иначе — новая грамотка. */
+export function savePerson(store: GramotkiStore, fields: Record<string, string>, source: string): Promise<{ id: string; how: 'added' | 'updated' }> {
+  return serial(store, async () => {
+    const r = upsertPerson(store.snapshot().people, fields, source);
+    if (r.how === 'added') return { id: await store.create(clean(fields), source), how: 'added' as const };
+    store.setPerson(r.id, r.records.find((x) => x.id === r.id)!.fields, source);
+    return { id: r.id, how: 'updated' as const };
+  });
+}
+
+/** Дописать: непустые значения заменяют прежние, остальные поля не меняются. */
+export function completeIn(store: GramotkiStore, id: string, fields: Record<string, string>): void {
+  const g = store.item(id);
+  if (!g) throw new GramotkiClosedError();
+  store.setPerson(id, completePerson([{ id, fields: g.fields, savedAt: '', source: g.index.person.source }], id, fields)[0].fields, g.index.person.source);
+}
+
+/** Заменить данные человека (ручной ввод). Пустые значения не сохраняются. */
+export function putIn(store: GramotkiStore, id: string, fields: Record<string, string>, source: string): void {
+  if (!store.item(id)) throw new GramotkiClosedError();
+  store.setPerson(id, clean(fields), source);
+}
+
 export function usePeople() {
   const { workspace } = useWorkspace();
-  const store = useMemo(() => (workspace ? peopleStore(workspace) : null), [workspace]);
-  const state = useDocStore(store);
-  const records = state?.data.records;
+  const { store, snap } = useGramotki();
+  const records = snap.people;
+  const status: GramotkiStatus = snap.status;
   return useMemo(() => {
-    const list = records ?? [];
-    /** Сохранить человека и узнать id его записи. */
-    const upsert = (fields: Record<string, string>, source: string): { id: string; how: 'added' | 'updated' } => {
-      const r = upsertPerson(store?.get().data.records ?? list, fields, source);
-      store?.update(() => ({ records: r.records }));
-      return { id: r.id, how: r.how };
+    /** Открыть грамотки (окно фразы), если закрыты. */
+    const open = async (reason: string) => {
+      if (!workspace || !store || !(await ensureOpen(workspace, reason))) throw new GramotkiClosedError();
+      return store;
     };
+    const add = async (fields: Record<string, string>, source: string): Promise<string> => (await open('Чтобы добавить человека')).create(clean(fields), source);
+    /** Сохранить человека и узнать номер его грамотки. */
+    const upsert = async (fields: Record<string, string>, source: string) => savePerson(await open('Чтобы сохранить данные человека'), fields, source);
     return {
-      records: list,
-      loaded: !!state?.loaded,
-      readOnly: !!state?.tooNew || !!state?.broken,
+      records,
+      /** Можно показывать: грамотки открыты или их не открыть без фразы (тогда записей нет). */
+      loaded: status === 'open' || status === 'locked' || status === 'new',
+      /** Грамотки открыты — данные людей доступны. */
+      available: status === 'open',
+      status,
+      /** Менять можно только открытые грамотки (иначе сначала — фраза). */
+      readOnly: status !== 'open',
+      /** Попросить открыть грамотки (окно фразы). */
+      open: () => (workspace ? ensureOpen(workspace) : Promise.resolve(false)),
+      /** Записи прямо сейчас (после open() в том же обработчике records ещё прежние). */
+      current: (): PersonRecord[] => store?.snapshot().people ?? [],
       /**
        * Сохранить человека. Запись с тем же ФИО и той же датой рождения обновляется,
-       * иначе добавляется новая. Пустые значения не сохраняются.
+       * иначе создаётся новая грамотка. Пустые значения не сохраняются.
        */
-      save(fields: Record<string, string>, source: string): 'added' | 'updated' {
-        return upsert(fields, source).how;
+      async save(fields: Record<string, string>, source: string): Promise<'added' | 'updated'> {
+        return (await upsert(fields, source)).how;
       },
       upsert,
+      /** Новый человек — новая грамотка. Возвращает её номер. */
+      add,
       /** Дописать данные в запись человека (например, то, чего не хватило для документа). */
       complete(id: string, fields: Record<string, string>) {
-        store?.update((d) => ({ records: completePerson(d.records, id, fields) }));
+        if (!store) throw new GramotkiClosedError();
+        completeIn(store, id, fields);
       },
-      /**
-       * Сохранить запись с этим id (ручной ввод): запись с таким id заменяется, иначе добавляется
-       * (без id — с новым). Возвращает id записи. Пустые значения не сохраняются.
-       */
-      put(fields: Record<string, string>, source: string, id?: string): string {
-        const clean = Object.fromEntries(Object.entries(fields).filter(([, v]) => v.trim() !== ''));
-        const record: PersonRecord = { id: id ?? uid('p_'), fields: clean, savedAt: new Date().toISOString(), source };
-        store?.update((d) => ({ records: d.records.some((r) => r.id === record.id) ? d.records.map((r) => (r.id === record.id ? record : r)) : [...d.records, record] }));
-        return record.id;
+      /** Заменить данные человека (ручной ввод). Пустые значения не сохраняются. */
+      put(id: string, fields: Record<string, string>, source: string) {
+        if (!store) throw new GramotkiClosedError();
+        putIn(store, id, fields, source);
       },
-      remove(id: string) {
-        store?.update((d) => ({ records: d.records.filter((r) => r.id !== id) }));
+      /** Удалить человека вместе с его грамоткой (все файлы). */
+      async remove(id: string) {
+        await store?.remove(id);
       },
     };
-  }, [records, state?.loaded, state?.tooNew, state?.broken, store]);
+  }, [records, status, store, workspace]);
 }
+
+export type PeopleApi = ReturnType<typeof usePeople>;

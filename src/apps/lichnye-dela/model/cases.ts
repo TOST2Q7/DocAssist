@@ -1,23 +1,23 @@
 import { useMemo } from 'react';
+import { gramotkaPath } from '@/core/gramotka/store';
+import { useGramotki } from '@/core/gramotka/react';
 import { fioText } from '@/core/people/people';
 import { defineDocType } from '@/core/schema/docType';
-import { baseName, joinPath } from '@/core/storage/types';
+import { joinPath } from '@/core/storage/types';
 import { uid } from '@/core/util/id';
-import { listAllFiles } from '@/core/workspace/backup';
 import { getDocStore, useDocStore } from '@/core/workspace/docStore';
 import { useWorkspace } from '@/core/workspace/WorkspaceContext';
 import type { Workspace } from '@/core/workspace/workspace';
-import { APP_FOLDER, CASES_FILE, SECTIONS, TRANSFERS_FOLDER, WORD_TEMPLATES_FOLDER } from '../constants';
+import { APP_ID, SECTIONS, TRANSFER_FILE } from '../constants';
 
 /*
- * Личные дела. Данные человека (35 полей анкеты) живут в общей базе людей (.docassist/people.json) —
- * их видят все приложения. Здесь — то, что относится к личному делу:
+ * Личные дела. Каждый боец — своя грамотка (src/core/gramotka): данные (35 полей анкеты) — в ней же, их видят все
+ * приложения. Здесь — то, что относится к личному делу: раздел «Личных дел» внутри грамотки (достижения,
+ * характеристика, подписи файлов, переводы) и личная папка — виртуальная папка «@грамотки/<номер>»:
  *
- *   Личные дела/
- *     cases.json                      ← этот файл: достижения, характеристика, подписи файлов, переводы
- *     Фамилия Имя Отчество/           ← личная папка
- *       Фотографии/  Сканы/  Достижения/  Характеристика/
- *       Перевод 2026-09-01/           ← пакет перевода (документы, таблица, фото и сканы)
+ *   Фотографии/  Сканы/  Достижения/  Характеристика/   ← разделы личной папки (файлы закрыты в грамотке)
+ *
+ *   Личные дела/transfer.json   ← последние данные перевода (подставляются в следующий раз)
  */
 
 export interface Achievement {
@@ -61,13 +61,8 @@ export interface FileNote {
   title?: string;
 }
 
-export interface PersonCase {
-  /** Запись в базе людей. */
-  personId: string;
-  /** Личная папка (путь в рабочей папке). */
-  folder: string;
-  /** ФИО на момент последнего сохранения — если запись удалят из базы людей, дело не потеряется. */
-  fio: string;
+/** Раздел «Личных дел» в грамотке. */
+export interface CaseData {
   /** Основное фото (путь внутри личной папки) — для личной карточки и пакета перевода. */
   photo?: string;
   characteristic: string;
@@ -77,6 +72,15 @@ export interface PersonCase {
   transfers: TransferRecord[];
   createdAt: string;
   updatedAt: string;
+}
+
+export interface PersonCase extends CaseData {
+  /** Номер грамотки (он же id в базе людей). */
+  personId: string;
+  /** Личная папка (виртуальный путь в рабочей папке). */
+  folder: string;
+  /** ФИО (из данных человека). */
+  fio: string;
 }
 
 /** Последние данные перевода — подставляются в следующий раз. */
@@ -89,24 +93,20 @@ export interface TransferDefaults {
   reason?: string;
 }
 
-export interface CasesDoc {
-  cases: PersonCase[];
+export interface TransferDoc {
   lastTransfer?: TransferDefaults;
 }
 
-export const casesDocType = defineDocType<CasesDoc>({
-  type: 'lichnye-dela/cases',
+export const transferDocType = defineDocType<TransferDoc>({
+  type: 'lichnye-dela/transfer',
   version: 1,
   migrations: {},
-  empty: () => ({ cases: [] }),
+  empty: () => ({}),
 });
 
-export function casesStore(ws: Workspace) {
-  return getDocStore(ws, CASES_FILE, casesDocType);
+export function transferStore(ws: Workspace) {
+  return getDocStore(ws, TRANSFER_FILE, transferDocType);
 }
-
-/** Имена, которые нельзя занять личной папкой. */
-const RESERVED = new Set([baseName(WORD_TEMPLATES_FOLDER), baseName(TRANSFERS_FOLDER)].map((s) => s.toLowerCase()));
 
 /** Имя файла или папки без запрещённых в Windows символов. */
 export function safeName(s: string, max = 80): string {
@@ -118,28 +118,23 @@ export function safeName(s: string, max = 80): string {
     .replace(/[. ]+$/, '');
 }
 
-/** Имя личной папки по ФИО. */
-export function folderNameFor(fields: Record<string, string>): string {
-  const name = safeName(fioText(fields)) || 'Без имени';
-  return RESERVED.has(name.toLowerCase()) ? `${name} (боец)` : name;
-}
-
-/** Свободное имя: «Фамилия Имя», «Фамилия Имя (2)»… */
-export function uniqueName(base: string, taken: Set<string>): string {
-  const lower = new Set([...taken].map((t) => t.toLowerCase()));
-  if (!lower.has(base.toLowerCase())) return base;
-  for (let i = 2; ; i++) {
-    const name = `${base} (${i})`;
-    if (!lower.has(name.toLowerCase())) return name;
-  }
-}
-
 /** Путь внутри личной папки → путь в рабочей папке. */
 export const casePath = (c: Pick<PersonCase, 'folder'>, rel: string) => joinPath(c.folder, rel);
 
-export function newCase(personId: string, folder: string, fio: string): PersonCase {
-  const now = new Date().toISOString();
-  return { personId, folder, fio, characteristic: '', achievements: [], files: {}, transfers: [], createdAt: now, updatedAt: now };
+export function emptyCase(now = new Date().toISOString()): CaseData {
+  return { characteristic: '', achievements: [], files: {}, transfers: [], createdAt: now, updatedAt: now };
+}
+
+/** Дело человека: раздел «Личных дел» из грамотки (или пустой) и его личная папка. */
+export function caseOf(personId: string, fields: Record<string, string>, data: Partial<CaseData> | undefined): PersonCase {
+  const base = emptyCase('');
+  return { ...base, ...data, personId, folder: gramotkaPath(personId), fio: fioText(fields) };
+}
+
+/** Только то, что хранится в грамотке. */
+export function caseData(c: PersonCase): CaseData {
+  const { personId: _p, folder: _f, fio: _n, ...data } = c;
+  return data;
 }
 
 /** Дело после переименования файла: подпись, основное фото и ссылки достижений переходят на новое имя. */
@@ -158,61 +153,40 @@ export async function ensureSections(ws: Workspace, folder: string): Promise<voi
   for (const s of SECTIONS) await ws.mkdir(joinPath(folder, s.folder));
 }
 
-/** Перенести папку целиком (у хранилищ нет переименования — копируем и удаляем старую). */
-export async function moveFolder(ws: Workspace, from: string, to: string): Promise<void> {
-  const files = await listAllFiles(ws, from);
-  for (const f of files) {
-    const data = await ws.readBytes(f.path);
-    if (data) await ws.writeBytes(joinPath(to, f.path.slice(from.length + 1)), data);
-  }
-  await ensureSections(ws, to);
-  await ws.remove(from);
-}
-
 export function useCases() {
   const { workspace } = useWorkspace();
-  const store = useMemo(() => (workspace ? casesStore(workspace) : null), [workspace]);
-  const state = useDocStore(store);
-  const doc = state?.data;
+  const { store, snap } = useGramotki();
+  const tStore = useMemo(() => (workspace ? transferStore(workspace) : null), [workspace]);
+  const tState = useDocStore(tStore);
+  const people = snap.people;
 
   return useMemo(() => {
-    const cases = doc?.cases ?? [];
+    const cases = people.map((p) => caseOf(p.id, p.fields, store?.section<CaseData>(p.id, APP_ID)));
     const byPerson = new Map(cases.map((c) => [c.personId, c]));
-    const touch = (c: PersonCase): PersonCase => ({ ...c, updatedAt: new Date().toISOString() });
-    const update = (personId: string, fn: (c: PersonCase) => PersonCase) =>
-      store?.update((d) => ({ ...d, cases: d.cases.map((c) => (c.personId === personId ? touch(fn(c)) : c)) }));
+    const update = (personId: string, fn: (c: PersonCase) => PersonCase) => {
+      const c = byPerson.get(personId) ?? (store?.item(personId) ? caseOf(personId, store.item(personId)!.fields, store.section<CaseData>(personId, APP_ID)) : null);
+      if (!c || !store) return;
+      const next = fn(c);
+      store.setSection(personId, APP_ID, { ...caseData(next), createdAt: c.createdAt || new Date().toISOString(), updatedAt: new Date().toISOString() });
+    };
+    const open = snap.status === 'open';
 
     return {
-      loaded: !!state?.loaded,
-      readOnly: !!state?.tooNew || !!state?.broken,
-      error: state?.error,
+      loaded: open || snap.status === 'locked' || snap.status === 'new',
+      readOnly: !open,
       cases,
-      lastTransfer: doc?.lastTransfer ?? {},
+      lastTransfer: tState?.data.lastTransfer ?? {},
       get: (personId: string) => byPerson.get(personId),
 
-      /** Личное дело человека: создаёт папку с разделами, если её ещё нет. */
+      /** Личное дело человека: разделы личной папки на месте. */
       async ensure(personId: string, fields: Record<string, string>): Promise<PersonCase> {
-        if (!workspace || !store) throw new Error('Рабочая папка не открыта');
-        await store.load();
-        const existing = store.get().data.cases.find((c) => c.personId === personId);
-        if (existing) {
-          await ensureSections(workspace, existing.folder);
-          return existing;
-        }
-        const taken = new Set([...(await workspace.list(APP_FOLDER)).map((e) => e.name), ...store.get().data.cases.map((c) => baseName(c.folder))]);
-        const folder = joinPath(APP_FOLDER, uniqueName(folderNameFor(fields), taken));
-        await ensureSections(workspace, folder);
-        const c = newCase(personId, folder, fioText(fields));
-        store.update((d) => ({ ...d, cases: [...d.cases.filter((x) => x.personId !== personId), c] }));
+        if (!workspace || !store?.item(personId)) throw new Error('Грамотка закрыта или её нет.');
+        const c = caseOf(personId, fields, store.section<CaseData>(personId, APP_ID));
+        await ensureSections(workspace, c.folder);
+        if (!store.section(personId, APP_ID)) store.setSection(personId, APP_ID, caseData({ ...c, ...emptyCase() }));
         return c;
       },
       update,
-      /** Запомнить ФИО (если человек переименован в базе людей). */
-      syncFio(personId: string, fields: Record<string, string>) {
-        const c = byPerson.get(personId);
-        const fio = fioText(fields);
-        if (c && fio && c.fio !== fio) update(personId, (x) => ({ ...x, fio }));
-      },
       addAchievement(personId: string, a: Omit<Achievement, 'id'>) {
         update(personId, (c) => ({ ...c, achievements: [...c.achievements, { ...a, id: uid('a_') }] }));
       },
@@ -249,28 +223,10 @@ export function useCases() {
         update(personId, (c) => ({ ...c, transfers: c.transfers.filter((t) => t.id !== id) }));
       },
       setLastTransfer(t: TransferDefaults) {
-        store?.update((d) => ({ ...d, lastTransfer: t }));
-      },
-      /** Переименовать личную папку по ФИО. */
-      async renameFolder(personId: string, fields: Record<string, string>): Promise<string | null> {
-        const c = byPerson.get(personId);
-        if (!workspace || !c) return null;
-        const taken = new Set((await workspace.list(APP_FOLDER)).map((e) => e.name).filter((n) => n !== baseName(c.folder)));
-        const folder = joinPath(APP_FOLDER, uniqueName(folderNameFor(fields), taken));
-        if (folder === c.folder) return folder;
-        await moveFolder(workspace, c.folder, folder);
-        update(personId, (x) => ({ ...x, folder, fio: fioText(fields) }));
-        return folder;
-      },
-      /** Удалить личное дело (и, если нужно, папку со всеми файлами). */
-      async remove(personId: string, withFolder: boolean) {
-        const c = byPerson.get(personId);
-        if (!c) return;
-        if (withFolder && workspace) await workspace.remove(c.folder);
-        store?.update((d) => ({ ...d, cases: d.cases.filter((x) => x.personId !== personId) }));
+        tStore?.update((d) => ({ ...d, lastTransfer: t }));
       },
     };
-  }, [doc, state?.loaded, state?.tooNew, state?.broken, state?.error, store, workspace]);
+  }, [people, snap.status, snap.rev, store, workspace, tState?.data, tStore]);
 }
 
 export type CasesApi = ReturnType<typeof useCases>;

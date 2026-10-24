@@ -47,3 +47,27 @@ describe('папка «Для выдачи»', () => {
     expect(await ws.readBytes('Для выдачи/Паспорт.jpg')).toBeNull();
   });
 });
+
+describe('«Для выдачи» и грамотки', () => {
+  it('скан из личной папки (грамотки) — в «Для выдачи» открытым файлом и обратно; готовый документ — сразу туда', async () => {
+    const { GramotkiStore, gramotkaPath } = await import('../gramotka/store');
+    const { addToHandout } = await import('./handout');
+    const ws = new Workspace(new MemoryAdapter());
+    await ws.init();
+    const g = new GramotkiStore(ws);
+    await g.init();
+    await g.createOwner('лампа ворона северный компот гитара', 'Мастер', false);
+    const id = await g.create({ 'person.lastName': 'Фамилия' }, 'test');
+    const from = `${gramotkaPath(id)}/Сканы/скан.jpg`;
+    await ws.writeBytes(from, 'скан');
+    const item = await putToHandout(ws, from, { name: 'Паспорт.jpg', move: true });
+    expect(text(await ws.readBytes('Для выдачи/Паспорт.jpg'))).toBe('скан');
+    expect(await ws.readBytes(from)).toBeNull();
+    const back = await takeBack(ws, item);
+    expect(back).toBe(from);
+    expect(text(await ws.readBytes(from))).toBe('скан');
+    const name = await addToHandout(ws, 'Учетная карточка.docx', new TextEncoder().encode('docx'), { source: 'doc-generator', label: 'Учетная карточка', who: 'Фамилия' });
+    expect(name).toBe('Учетная карточка.docx');
+    expect(handoutStore(ws).get().data.items.find((x) => x.name === name)).toMatchObject({ from: '', moved: false, label: 'Учетная карточка' });
+  }, 30_000);
+});
