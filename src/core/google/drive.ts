@@ -117,6 +117,14 @@ export const trashFile = (id: string) => updateMeta(id, { trashed: true });
 export const restoreFile = (id: string) => updateMeta(id, { trashed: false });
 export const moveFile = (id: string, from: string, to: string) => updateMeta(id, {}, { addParents: to, removeParents: from });
 
+/** Место на Google Диске: сколько занято и сколько всего (у безлимитных хранилищ limit нет). */
+export async function storageQuota(): Promise<{ usage: number; limit: number | null }> {
+  const r = await gfetch<{ storageQuota?: { usage?: string; limit?: string } }>(`${API}/about`, { query: { fields: 'storageQuota(usage,limit)' } });
+  const usage = Number(r.storageQuota?.usage ?? 0);
+  const limit = r.storageQuota?.limit ? Number(r.storageQuota.limit) : null;
+  return { usage, limit };
+}
+
 /** Удалить насовсем (только своё: например, файл личных настроек). */
 export async function deleteForever(id: string): Promise<void> {
   await gfetch(`${API}/files/${encodeURIComponent(id)}`, { method: 'DELETE', query: { supportsAllDrives: true } });

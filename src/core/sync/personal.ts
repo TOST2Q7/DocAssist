@@ -6,6 +6,7 @@ import { mergeSeen } from '../registry/badges';
 import { APPS } from '../registry/apps';
 import type { SyncGroupDef } from '../registry/types';
 import { setThemePref, type ThemePref } from '../theme';
+import { attempt } from '../vault/attempts';
 import { keyFromPassword, lockWithKey, rememberedKey, rememberKey, forgetKey, sameSalt, unlock, unlockWithKey, VaultError, type VaultKey } from '../vault/vault';
 import { flushDocStores, reloadDocStore } from '../workspace/docStore';
 import type { Workspace } from '../workspace/workspace';
@@ -13,8 +14,9 @@ import { applyPlan, conflictsFor, planSync, type LocalItem, type SyncBase, type 
 
 /*
  * Личные настройки на личном Google Диске человека — по желанию, чтобы запускать DocAssist на других устройствах
- * с теми же настройками. Один файл в «Моём диске», закрытый контрольной фразой (src/core/vault): без фразы его
- * не открыть никому, восстановить фразу нельзя. Что переносить — выбирает человек (группы ниже).
+ * с теми же настройками. Один файл в «Моём диске», закрытый паролем (src/core/vault): без пароля его
+ * не открыть никому, восстановить пароль нельзя. Что переносить — выбирает человек (группы ниже).
+ * Грамотки (данные людей) переносятся отдельно — src/core/sync/gramotki.ts, они закрыты фразой грамоток.
  * Расхождения решает человек по меткам «дата, время, устройство».
  */
 
@@ -127,15 +129,15 @@ export async function findRemote(): Promise<DriveFile | null> {
   return files[0] ?? null;
 }
 
-async function readRemote(file: DriveFile, opts: { key?: VaultKey | null; phrase?: string }): Promise<{ payload: SyncPayload; key: VaultKey } | null> {
+async function readRemote(file: DriveFile, opts: { key?: VaultKey | null; password?: string }): Promise<{ payload: SyncPayload; key: VaultKey } | null> {
   const bytes = await drive.downloadFile(file.id);
   let data: Uint8Array;
   let key: VaultKey;
   if (opts.key && sameSalt(bytes, opts.key)) {
     data = await unlockWithKey(bytes, opts.key);
     key = opts.key;
-  } else if (opts.phrase) {
-    const r = await unlock(bytes, opts.phrase);
+  } else if (opts.password) {
+    const r = await attempt('settings', () => unlock(bytes, opts.password!));
     data = r.data;
     key = r.key;
   } else return null;
@@ -199,13 +201,13 @@ export interface SyncSummary {
 }
 
 export type SyncStep =
-  | { kind: 'need-phrase'; exists: boolean }
+  | { kind: 'need-password'; exists: boolean }
   | { kind: 'conflicts'; conflicts: Conflict[]; resolve: (choices: ConflictChoice[]) => Promise<SyncSummary> }
   | { kind: 'done'; summary: SyncSummary };
 
 export interface SyncOptions {
-  /** Контрольная фраза (если ключ не запомнен или файла ещё нет). */
-  phrase?: string;
+  /** Пароль личных настроек (если ключ не запомнен или файла ещё нет). */
+  password?: string;
   /** Запомнить ключ на этом устройстве. */
   remember?: boolean;
 }
@@ -217,7 +219,7 @@ export interface SyncOptions {
 async function cycle(ws: Workspace, key: VaultKey, onlyPaths: string[] | null, choices: ConflictChoice[]): Promise<{ summary: SyncSummary; conflicts: Conflict[]; conflictPaths: string[] }> {
   const file = await findRemote();
   const payload = file ? ((await readRemote(file, { key }))?.payload ?? null) : null;
-  if (file && !payload) throw new VaultError('wrong-phrase', 'Файл на Диске закрыт другой фразой — введите её заново.');
+  if (file && !payload) throw new VaultError('wrong-phrase', 'Файл на Диске закрыт другим паролем — введите его заново.');
   const paths = onlyPaths ?? (await pathsOf(ws, selectedGroups(ws), payload));
   const local = await readLocal(ws, paths);
   const base = readBase();
@@ -253,12 +255,12 @@ export async function runSync(ws: Workspace, opts: SyncOptions = {}): Promise<Sy
   const remembered = await rememberedKey();
   let key: VaultKey;
   if (file) {
-    const r = await readRemote(file, { key: remembered, phrase: opts.phrase });
-    if (!r) return { kind: 'need-phrase', exists: true };
+    const r = await readRemote(file, { key: remembered, password: opts.password });
+    if (!r) return { kind: 'need-password', exists: true };
     key = r.key;
   } else {
-    if (!opts.phrase) return { kind: 'need-phrase', exists: false };
-    key = await keyFromPassword(opts.phrase);
+    if (!opts.password) return { kind: 'need-password', exists: false };
+    key = await keyFromPassword(opts.password);
   }
   if (opts.remember) await rememberKey(key);
 
@@ -282,13 +284,13 @@ function applyPrefs(data: unknown) {
   if (d?.seen) mergeSeen(d.seen);
 }
 
-/** Сменить контрольную фразу: файл перешифровывается новой фразой. */
-export async function changePhrase(oldPhrase: string | null, newPhrase: string, remember: boolean): Promise<void> {
+/** Сменить пароль: файл перешифровывается новым паролем. */
+export async function changePassword(oldPassword: string | null, newPassword: string, remember: boolean): Promise<void> {
   const file = await findRemote();
   if (!file) throw new Error('На Google Диске ещё нет личных настроек.');
-  const r = await readRemote(file, { key: await rememberedKey(), phrase: oldPhrase ?? undefined });
-  if (!r) throw new Error('Введите нынешнюю фразу.');
-  const key = await keyFromPassword(newPhrase);
+  const r = await readRemote(file, { key: await rememberedKey(), password: oldPassword ?? undefined });
+  if (!r) throw new Error('Введите нынешний пароль.');
+  const key = await keyFromPassword(newPassword);
   await writeRemote(file, { ...r.payload, savedAt: makeStamp() }, key);
   await forgetKey();
   if (remember) await rememberKey(key);
@@ -308,7 +310,7 @@ export async function removeRemote(): Promise<boolean> {
   return !!file;
 }
 
-/** Забыть фразу (ключ) на этом устройстве и выключить сверку здесь. Файл на Диске остаётся. */
+/** Забыть пароль (ключ) на этом устройстве и выключить сверку здесь. Файл на Диске остаётся. */
 export async function forgetHere(): Promise<void> {
   await forgetKey();
   setSyncPrefs({ enabled: false });

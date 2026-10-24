@@ -447,9 +447,14 @@ export class Gramotka {
     const now = new Date().toISOString();
     const pass: PassMeta = transfer ? { v: 1, kind: 'own', gen: r.meta.gen + 1, owner: ctx.owner, from: r.meta.from, at: now, journal: r.meta.journal } : { ...r.meta, kind: 'own', owner: ctx.owner };
     const g = new Gramotka(r.id, folder, io, dk, pass, { ...index, files }, r.bundle.head.journal, ctx);
-    if (transfer) await g.addJournal('accepted');
-    g.dirty = true;
-    await g.flush();
+    if (transfer) {
+      await g.addJournal('accepted');
+      g.dirty = true;
+      await g.flush();
+    } else {
+      // Своя копия (резерв, другое устройство) — как есть: это не новая правка, иначе устройства перекидывали бы её друг другу.
+      await g.run(() => g.writeHeadNow());
+    }
     return g;
   }
 

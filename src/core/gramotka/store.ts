@@ -4,12 +4,12 @@ import { fromUtf8, utf8 } from '../util/bytes';
 import { uid } from '../util/id';
 import { attempt } from '../vault/attempts';
 import { forgetOwnerKeys, isOwners, ownerKeys, ownerOpen, ownerSaltOf, ownerSeal, readKeyFile, rememberedOwnerKeys, rememberOwnerKeys, type OwnerKeys } from '../vault/owner';
-import { newTransferCode } from '../vault/pass';
+import { digest, newTransferCode } from '../vault/pass';
 import { VaultError } from '../vault/vault';
 import { MOUNT_ROOT, type Workspace } from '../workspace/workspace';
 import { compareEdits, diffIndexes, mergeIndexes, type DiffItem, type MergeChoice, type Order } from './compare';
 import { GramotkaFiles } from './files';
-import { FormatError, HEAD_FILE, hex, newId, readBundle, readHead, shortCode, writeHead } from './format';
+import { FormatError, HEAD_FILE, hex, newId, readBundle, readHead, shortCode, writeBundle, writeHead } from './format';
 import { clearCache, Gramotka, openReceivedOwn, openReceivedWithCode, type GramotkaIO, type OwnerContext, type Received } from './gramotka';
 import type { OwnerInfo, SealedLabel } from './types';
 
@@ -117,6 +117,8 @@ export class GramotkiStore {
   private waiters: Array<(ok: boolean) => void> = [];
   /** Замок разработчика (в проверках — свой). */
   developerLock?: string;
+  /** Здесь грамоток нет, а на Google Диске есть: файл оттуда — по нему проверяется фраза (та же, что на другом устройстве). */
+  private joinBundle: Uint8Array | null = null;
 
   readonly io: GramotkaIO;
 
@@ -214,6 +216,10 @@ export class GramotkiStore {
     const card = await this.io.read(this.ownerPath()).catch(() => null);
     if (card) return [ownerSaltOf(card)];
     const out: Uint8Array[] = [];
+    if (this.joinBundle) {
+      const head = readBundle(this.joinBundle).head;
+      out.push(ownerSaltOf(head.label.length ? head.label : head.pass));
+    }
     for (const f of await this.folders()) {
       try {
         const head = readHead((await this.io.read(joinPath(f, HEAD_FILE)))!);
@@ -260,7 +266,29 @@ export class GramotkiStore {
       const r = await Gramotka.open(this.io, f, { keys, owner: { id: '', name: '' }, device: () => '', replica: '' });
       if (r.kind === 'open' || r.kind === 'sealed') return true;
     }
+    if (this.joinBundle) return (await this.joinOwner(keys)) !== null;
     return false;
+  }
+
+  /** Мастер из файла с Диска (его пропуск открывается этой фразой) — или null. */
+  private async joinOwner(keys: OwnerKeys): Promise<OwnerInfo | null> {
+    if (!this.joinBundle) return null;
+    const b = readBundle(this.joinBundle);
+    if (b.head.label.length) return ownerOpen(keys, b.head.label, `${hex(b.head.id)}/label`).then(() => ({ id: uid('m_'), name: 'Мастер' }), () => null);
+    return openReceivedOwn(b, keys).then(
+      (r) => r.meta.owner ?? null,
+      () => null,
+    );
+  }
+
+  /**
+   * Здесь грамоток ещё нет, а на Google Диске есть (то же лицо на другом устройстве): открыть их той же фразой.
+   * После этого окно фразы просит ввести фразу, а не придумать новую.
+   */
+  joinFrom(bytes: Uint8Array): void {
+    readBundle(bytes);
+    this.joinBundle = bytes;
+    if (this.snap.status === 'new') this.emit({ status: 'locked' });
   }
 
   private async readOwner(keys: OwnerKeys): Promise<OwnerInfo | null> {
@@ -290,7 +318,8 @@ export class GramotkiStore {
       setClosedByUser(false);
       const folders = await this.folders();
       this.emit({ status: 'opening', progress: { done: 0, total: folders.length }, error: null });
-      let owner = known ?? (await this.readOwner(keys));
+      let owner = known ?? (await this.readOwner(keys)) ?? (await this.joinOwner(keys));
+      this.joinBundle = null;
       const items = new Map<string, Gramotka>();
       const sealed = new Map<string, SealedEntry>();
       const foreign = new Set<string>();
@@ -469,6 +498,90 @@ export class GramotkiStore {
     const g = this.items.get(id);
     if (!g) throw new Error('Грамотка закрыта или её нет.');
     return { id, name: `Грамотка ${shortCode(id)}.${GRAMOTKA_EXT}`, data: await g.bundle() };
+  }
+
+  // ---------- Для переноса через Google Диск ----------
+
+  /** Ревизия грамотки: меняется с каждой правкой (по счёту правок). null — такой нет. */
+  async revision(id: string): Promise<string | null> {
+    const g = this.items.get(id);
+    if (g) {
+      await g.flush();
+      const edits = Object.entries(g.index.edits).sort(([a], [b]) => a.localeCompare(b));
+      return `e${await digest(utf8(JSON.stringify(edits)))}`;
+    }
+    const s = this.sealed.get(id);
+    return s ? `s${await digest(utf8(s.label.at))}` : null;
+  }
+
+  /** Все грамотки этой папки: открытые и запечатанные. */
+  ids(): string[] {
+    return [...this.items.keys(), ...this.sealed.keys()];
+  }
+
+  /** Подпись для людей: ФИО (открытая) или ярлык (запечатанная), иначе — номер. */
+  title(id: string): string {
+    const g = this.items.get(id);
+    const fio = g ? ['person.lastName', 'person.firstName', 'person.middleName'].map((k) => g.fields[k]).filter(Boolean).join(' ') : this.sealed.get(id)?.label.fio;
+    return fio || `Грамотка ${shortCode(id)}`;
+  }
+
+  isSealed(id: string): boolean {
+    return this.sealed.has(id);
+  }
+
+  /** Грамотка одним файлом — открытая (свой пропуск) или запечатанная (как лежит). */
+  async rawBundle(id: string): Promise<TransferFile> {
+    if (this.items.has(id)) return this.bundle(id);
+    const s = this.sealed.get(id);
+    if (!s) throw new Error('Такой грамотки нет.');
+    const head = readHead((await this.io.read(joinPath(s.folder, HEAD_FILE)))!);
+    const pieces = new Map<string, Uint8Array>();
+    for (const e of await this.io.list(s.folder)) {
+      if (e.kind !== 'file' || e.name === HEAD_FILE || !/^[0-9a-f]{32}$/.test(e.name)) continue;
+      const data = await this.io.read(e.path);
+      if (data) pieces.set(e.name, data);
+    }
+    return { id, name: `Грамотка ${shortCode(id)}.${GRAMOTKA_EXT}`, data: writeBundle({ head, pieces }) };
+  }
+
+  /** Это запечатанная копия (передана на другом устройстве)? Тогда — ярлык; иначе null. */
+  sealedLabelOf(bytes: Uint8Array): Promise<SealedLabel | null> {
+    const b = readBundle(bytes);
+    if (!b.head.label.length) return Promise.resolve(null);
+    const id = hex(b.head.id);
+    return ownerOpen(this.ctx().keys, b.head.label, `${id}/label`).then((x) => JSON.parse(fromUtf8(x)) as SealedLabel);
+  }
+
+  /** Сохранить запечатанную копию с другого устройства (там бойца передали). Открытая здесь — заменяется. */
+  async importSealed(bytes: Uint8Array): Promise<string> {
+    const label = await this.sealedLabelOf(bytes);
+    if (!label) throw new Error('Это не запечатанная копия.');
+    const b = readBundle(bytes);
+    const id = hex(b.head.id);
+    const old = this.items.get(id)?.folder ?? this.sealed.get(id)?.folder;
+    const folder = await this.freeFolder(id);
+    for (const [piece, data] of b.pieces) await this.io.write(joinPath(folder, piece), data);
+    await this.io.write(joinPath(folder, HEAD_FILE), writeHead(b.head));
+    if (old) await this.io.remove(old);
+    this.items.delete(id);
+    this.ws.unmount(gramotkaPath(id));
+    this.sealed.set(id, { id, folder, label });
+    this.emit();
+    return id;
+  }
+
+  /** Сколько места занимают грамотки на диске (закрытые байты всех файлов). */
+  async diskSize(): Promise<number> {
+    let total = 0;
+    const walk = async (dir: string) => {
+      for (const e of await this.io.list(dir).catch(() => [])) {
+        if (e.kind === 'directory') await walk(e.path);
+        else total += e.size ?? (await this.io.read(e.path))?.length ?? 0;
+      }
+    };
+    await walk(GRAMOTKI_FOLDER);
+    return total;
   }
 
   /** Что за файл пришёл (без ключа). */
