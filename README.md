@@ -46,6 +46,8 @@
 
 ## Быстрый старт
 
+Коротко всё нужное разработчику (`da`, правила, подключение Google) — [docs/DEV-GUIDE.md](docs/DEV-GUIDE.md).
+
 ```bash
 npm install
 npm run dev        # разработка: http://localhost:5173
